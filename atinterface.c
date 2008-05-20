@@ -193,9 +193,6 @@ inline int parseGpsCmd(int type) {
 				// READ  "Lat"
 				if (gpsIsPosValid()) {
 					ShowValueD(gpsLat());
-// 					formatDouble(gpsLat(), d_displayBuff, OUTPUT_BUFFER_SIZE);
-// 					Serial_printLine(d_displayBuff);
-// 					Serial_printLine(gpsLatStr());
 				} else
 					Serial_printStr("NA ");
 				goto pgc_ok;
@@ -209,11 +206,22 @@ inline int parseGpsCmd(int type) {
 				// READ  "Lon"
 				if (gpsIsPosValid()) {
 					ShowValueD(gpsLon());
-// 					formatDouble(gpsLon(), d_displayBuff, OUTPUT_BUFFER_SIZE);
-// 					Serial_printLine(d_displayBuff);
-// 					Serial_printLine(gpsLonStr());
 				} else
 					Serial_printStr("NA ");
+				goto pgc_ok;
+			}
+			goto pgc_error;
+		}
+		goto pgc_error;
+	case 'T':
+		switch(cmdRead()) {
+		case 'D':
+			switch(cmdLook()) {
+			case LINE_TERMINATOR:
+				cmdRead();
+			case '+':
+				// READ  "Track Degree"
+				ShowValueD(gpsDegree());
 				goto pgc_ok;
 			}
 			goto pgc_error;
