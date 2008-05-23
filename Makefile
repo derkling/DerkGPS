@@ -123,7 +123,7 @@ AVRDUDE_PORT=usb
 
 AVRDUDE_SPEED=115200
 
-AVRDUDE_CONFIG=/opt/arduino-0010/hardware/tools/avrdude.conf
+AVRDUDE_CONFIG=/etc/avrdude.conf
 
 ####################################################
 #####                Config Done               #####
@@ -176,7 +176,7 @@ CC=avr-gcc
 OBJCOPY=avr-objcopy
 OBJDUMP=avr-objdump
 SIZE=avr-size
-AVRDUDE=/opt/arduino-0010/hardware/tools/avrdude
+AVRDUDE=/usr/bin/avrdude
 REMOVE=rm -f
 
 ##### automatic target names ####
