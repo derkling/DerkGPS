@@ -45,14 +45,14 @@
 //      (RX0)   PD0 10|    |31  PE0
 //      (TX0)   PD1 11|    |30  PE1
 //      (INT0)  PD2 12|    |29  PE2
-//      (INT1)  PD3 13|    |28  PC7    (D6)
-//              PD4 14|    |27  PC6    (D7)
-//              PD5 15|    |26  PC5    (D8)
-//              PD6 16|    |25  PC4    (D9)
-//              PD7 17|    |24  PC3    (D10)
-//            XTAL2 18|    |23  PC2    (D11)
-//            XTAL1 19|    |22  PC1    (D12)
-//              GND 20|    |21  PC0    (D13)
+//      (INT1)  PD3 13|    |28  PC7    (D13)
+//              PD4 14|    |27  PC6    (D12)
+//              PD5 15|    |26  PC5    (D11)
+//              PD6 16|    |25  PC4    (D10)
+//              PD7 17|    |24  PC3    (D9)
+//            XTAL2 18|    |23  PC2    (D8)
+//            XTAL1 19|    |22  PC1    (D7)
+//              GND 20|    |21  PC0    (D6)
 //                    +----+
 // NOTE: Port A is used as DIGITAL only for TESTING!!!
 // (PWM+ indicates the additional PWM pins on the ATmega168.)
