@@ -99,13 +99,11 @@ void initGps(unsigned long mask);
 void gpsConfig(unsigned long mask);
 
 /// Update enabled sentences values.
-void gpsUpdate(void);
+void gpsParse(void);
 
 //--- GLL - Geographic Position - Latitude/Longitude
 double		gpsLat(void);
-char *		gpsLatStr(void);
 double		gpsLon(void);
-char *		gpsLonStr(void);
 unsigned long	gpsTime(void);
 short		gpsIsPosValid(void);
 

@@ -4,6 +4,7 @@
 */
 
 #include "gps.h"
+#include <math.h>
 
 #define GpsRead()	read(UART0)
 #define GpsAvailable()	available(UART0)
@@ -34,12 +35,8 @@ unsigned int maxSentences = 0;
 //--- GLL - Geographic Position - Latitude/Longitude
 /// Last parsed Latitude
 double lat;
-char latStr[1+11] = {'+',0,0,0,0,0,0,0,0,0,0,0};
-short latNord = 1;
 /// Last parsed Longitude
 double lon;
-char lonStr[1+12] = {'+',0,0,0,0,0,0,0,0,0,0,0,0};
-short lonEst = 1;
 /// UTC of Last valid position
 unsigned long utc = 0;
 /// True if the current position is a valid data
@@ -123,9 +120,9 @@ double minToDec(double nmea) {
 	double min;
 	double dec;
 	
-	deg = floor(nmea/100);
-	min = nmea-(deg*100);
-	dec = (double)deg + (min/60);
+	deg = (long)floor(nmea/100.0);
+	min = nmea-(deg*100.0);
+	dec = (double)deg + (min/60.0);
 	
 	return dec;
 }
@@ -229,22 +226,26 @@ inline gpsSentence_t gpsParseType(void) {
 
 //--- Parsing sentences
 
+void updateLatLon(void) {
+	gpsGetToken(buff); GpsDebugToken(buff);
+	lat  = strtod(buff, (char **)NULL);
+	gpsGetToken(buff); GpsDebugToken(buff);
+	if (buff[0] == 'S')
+		lat = -lat;
+
+	gpsGetToken(buff); GpsDebugToken(buff);
+	lon  = strtod(buff, (char **)NULL);
+	gpsGetToken(buff); GpsDebugToken(buff);
+	if (buff[0] == 'W')
+		lon = -lon;
+}
+
 // GLL - Geographic Position - Latitude/Longitude
 inline void gpsParseGLL(void) {
 	
 	GpsDebugStr("GLL ");
 	
-	gpsGetToken(latStr+1); GpsDebugToken(latStr+1);
-	gpsGetToken(buff); GpsDebugToken(buff);
-	latNord = (buff[0] == 'N') ? NORD : SUD;
-	latStr[0] = (latNord) ? '+' : '-';
-	lat  = strtod(latStr, (char **)NULL);
-
-	gpsGetToken(lonStr+1);  GpsDebugToken(lonStr+1);
-	gpsGetToken(buff); GpsDebugToken(buff);
-	lonEst = (buff[0] == 'E') ? EST : OVEST;
-	lonStr[0] = (lonEst) ? '+' : '-';
-	lon  = strtod(lonStr, (char **)NULL);
+	updateLatLon();
 	
 	gpsGetToken(buff);
 	utc = strtoul(buff, (char **)NULL, 10);
@@ -312,19 +313,8 @@ inline void gpsParseRMC(void) {
 	gpsGetToken(buff);
 	validity = (buff[0] == 'A') ? FIX_VALID : FIX_INVALID;
 
-	gpsGetToken(latStr+1);
-	gpsGetToken(buff);
-	latNord = (buff[0] == 'N') ? NORD : SUD;
-	latStr[0] = (latNord) ? '+' : '-';
-	lat = strtod(latStr, (char **)NULL);
+	updateLatLon();
 	
-	gpsGetToken(lonStr+1);
-	gpsGetToken(buff);
-	lonEst = (buff[0] == 'E') ? EST : OVEST;
-	lonStr[0] = (lonEst) ? '+' : '-';
-	lon  = strtod(lonStr, (char **)NULL);
-	
-
 	gpsGetToken(buff);
 	knots = strtod(buff, (char **)NULL);
 	kmh = knots*1.852;
@@ -350,7 +340,7 @@ void gpsConfig(unsigned long mask) {
 }
 
 // This method should update just one sentence each time is called
-void gpsUpdate(void) {
+void gpsParse(void) {
 	gpsSentence_t type;
 	
 	if (!toUpdate || !maxSentences) {
@@ -407,30 +397,12 @@ double gpsLat(void) {
 	return 99.999;
 }
 
-char *gpsLatStr(void) {
-	return latStr;
-// 	if (validity) {
-// 		sprintf(buf, "%s", latStr);
-// 		buf[10] = 0;
-// 	} else
-// 		sprintf(buf, "NA");
-}
-
 double gpsLon(void) {
 	
 	if (validity)
 		return minToDec(lon);
 	
 	return 999.999;
-}
-
-char *gpsLonStr(void) {
-	return lonStr;
-// 	if (validity) {
-// 		sprintf(buf, "%s", lonStr);
-// 		buf[11] = 0;
-// 	} else
-// 		sprintf(buf, "NA");
 }
 
 unsigned long	gpsTime(void) {
