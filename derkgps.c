@@ -91,6 +91,8 @@ derkgps_event_t d_suspendedEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE};
 derkgps_event_t d_pendingEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE};
 
 //----- GPS DATA
+/// The GPS power state: 1=ON, 0=OFF
+unsigned d_gpsPowerState = 0;
 /// The old fix value
 unsigned oldFix = FIX_INVALID;
 /// GPS top-halves Interrupt scheduling flags
@@ -202,8 +204,9 @@ inline void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 	// looking if it has to be notified
 	if (intrEnabled && !alreadyNotified) {
 		pinMode(intPin, OUTPUT);
-		delay(DERKGPS_INTR_LEN);
-		pinMode(intPin, INPUT);
+		digitalWrite(intPin, LOW);
+// delay(DERKGPS_INTR_LEN);
+// pinMode(intPin, INPUT);
 	}
 	
 }
@@ -283,6 +286,7 @@ inline void checkAlarms(void) {
 	
 }
 
+//----- System Initialization
 inline void setup(void) {
 
 	// GPS module power control
@@ -313,7 +317,8 @@ inline void setup(void) {
 	
 	// Powering on GPS and Optical Interrupt line
 	digitalWrite(gpsPowerPin, HIGH);
-
+	d_gpsPowerState = 1;
+	
 }
 
 /// @return 0 on successfull data update
@@ -352,16 +357,33 @@ int odoUpdate(void) {
 	return 0;
 }
 
-inline void loop(void) {
+inline gpsUpdate(void) {
+
+	if (d_gpsPowerState == 0) {
+		// Powering off GPS
+		digitalWrite(gpsPowerPin, HIGH);
+		digitalWrite(led1, LOW);
+		// Return with no other parsing
+		return;
+	}
+		
+	// Powering on GPS
+	digitalWrite(gpsPowerPin, HIGH);
 	
 	// Update GPS info; this call takes about 1s, this is the minimum
 	// 	delay for a speed update...
 	if ( checkInterrupt(INTR_GPS) ) {
 		digitalWrite(led1, LOW);
-		gpsUpdate();
+		gpsParse();
 		ackInterrupt(INTR_GPS);
 		digitalWrite(led1, HIGH);
 	}
+
+}
+
+inline void loop(void) {
+	
+	gpsUpdate();
 	
 	// Updating GPS and ODO data
 	if (odoUpdate()!=0)
@@ -385,7 +407,7 @@ inline void loop(void) {
 }
 
 int main(void) {
-	
+
 	cli();			// Disable interrupts just in case
 	PORTA   = 0x00;		// Give PORTA and "led" a initial startvalue
 	DDRA    = 0xFF;		// Set PORTA as output
