@@ -24,6 +24,8 @@
 #include "serials.h"
 // #include "gps.h"
 
+/// Interrupt pin
+extern uint8_t intPin;
 /// Golbal variables defined within derkgps.c
 extern volatile unsigned long d_pcount;
 /// Last computed odometer pulses frequency
@@ -34,6 +36,8 @@ extern unsigned long d_minOverSpeed;
 extern unsigned long d_minEmergencyBreak;
 /// Delay ~[s] between dispaly monitor sentences, if 0 DISABLED (default 0);
 extern unsigned d_displayTime;
+/// The GPS power state: 1=ON, 0=OFF
+extern unsigned d_gpsPowerState;
 /// Events pending to be ACKed
 extern derkgps_event_t d_pendingEvents[EVENT_CLASS_TOT];
 
@@ -213,6 +217,25 @@ inline int parseGpsCmd(int type) {
 			goto pgc_error;
 		}
 		goto pgc_error;
+	case 'P':
+		switch(cmdRead()) {
+		case 'S':
+			switch(cmdLook()) {
+			case LINE_TERMINATOR:
+				cmdRead();
+			case '+':
+				// READ  "Power State"
+				ShowValueU(d_gpsPowerState);
+				goto pgc_ok;
+			case '=':
+				// WRITE "Power State"
+				cmdRead();
+				ReadValueU(d_gpsPowerState);
+				goto pgc_ok;
+			}
+			goto pgc_error;
+		}
+		goto pgc_error;
 	case 'T':
 		switch(cmdRead()) {
 		case 'D':
@@ -306,6 +329,9 @@ inline int parseQueryCmd(int type) {
 				// Resetting pending event
 				d_pendingEvents[EVENT_CLASS_GPS] = EVENT_NONE;
 				d_pendingEvents[EVENT_CLASS_ODO] = EVENT_NONE;
+				
+				// Releasgin interrupt pin
+				pinMode(intPin, INPUT);
 				
 				goto pqc_ok;
 			}
