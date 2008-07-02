@@ -46,16 +46,16 @@
 #ifdef USE_DIP_PACKAGE
 # warning Using DIP package pinout
 uint8_t led1		=   15;	// Running DERKGPS_DEBUG led	(using PA1)
-uint8_t ledPin2		=   16;	// Running DERKGPS_DEBUG led	(using PA2)
-uint8_t ledPin3		=   17;	// Running DERKGPS_DEBUG led	(using PA3)
+uint8_t led2		=   16;	// Running DERKGPS_DEBUG led	(using PA2)
+uint8_t led3		=   17;	// Running DERKGPS_DEBUG led	(using PA3)
 uint8_t gpsPowerPin 	=   14;	// HIGH=>GPS_ON, LOW=>GPS_OFF	(using PA0)
-uint8_t intPin      	=   18;	// Interrupt pin		(using PA4)
+uint8_t intReq      	=   18;	// Interrupt pin		(using PA4)
 #else
 uint8_t led1		=   6;	// Running DERKGPS_DEBUG led	(using PC0)
-uint8_t ledPin2		=   7;	// Running DERKGPS_DEBUG led	(using PC1)
-uint8_t ledPin3		=   8;	// Running DERKGPS_DEBUG led	(using PC2)
+uint8_t led2		=   7;	// Running DERKGPS_DEBUG led	(using PC1)
+uint8_t led3		=   8;	// Running DERKGPS_DEBUG led	(using PC2)
 uint8_t gpsPowerPin 	=   9;	// HIGH=>GPS_ON, LOW=>GPS_OFF	(using PC3)
-uint8_t intPin      	=   10;	// Interrupt pin		(using PC4)
+uint8_t intReq      	=   10;	// Interrupt pin		(using PC4)
 #endif
 
 //----- ODOMETER
@@ -63,6 +63,8 @@ uint8_t intPin      	=   10;	// Interrupt pin		(using PC4)
 volatile unsigned long d_pcount = 0;
 /// Last computed odometer pulses frequency
 unsigned long d_freq = 0;
+/// The old freq value used for Alarms Checking
+unsigned d_oldFreq = 0;
 /// Current max [ppm/s] EVENT_OVER_SPEED alarm
 unsigned long d_minOverSpeed = 0;
 /// Current max [ppm/s] decelleration EVENT_EMERGENCY_BREAK alarm
@@ -84,7 +86,8 @@ short d_thIntrCMD = 0;
 
 //----- EVENT GENERATION
 /// Events enabled to generate signals
-derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE};
+//derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE}; // Disabling all interrupts by default
+derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = { 0x1F, 0x03 };
 /// Events suspended by this code to avoid interrupt storms
 derkgps_event_t d_suspendedEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE};
 /// Events pending to be ACKed
@@ -93,8 +96,8 @@ derkgps_event_t d_pendingEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE};
 //----- GPS DATA
 /// The GPS power state: 1=ON, 0=OFF
 unsigned d_gpsPowerState = 0;
-/// The old fix value
-unsigned oldFix = FIX_INVALID;
+/// The old fix value used for Alarms Checking
+unsigned d_oldFix = FIX_INVALID;
 /// GPS top-halves Interrupt scheduling flags
 short d_thIntrGPS = 0;
 
@@ -190,7 +193,8 @@ inline void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 	derkgps_event_t alreadyNotified;
 	derkgps_event_t intrEnabled;
 	
-	event = 0x01<<event;
+// 	Already done in checkAlarms!
+// 	event = 0x01<<event;
 	
 	// Not-null iff this event is enabled to generate interrupt
 	intrEnabled = d_activeEvents[event_class] & event;
@@ -203,10 +207,11 @@ inline void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 	
 	// looking if it has to be notified
 	if (intrEnabled && !alreadyNotified) {
-		pinMode(intPin, OUTPUT);
-		digitalWrite(intPin, LOW);
-// delay(DERKGPS_INTR_LEN);
-// pinMode(intPin, INPUT);
+		pinMode(intReq, OUTPUT);
+/* Wait until the interrupt has been read
+		delay(DERKGPS_INTR_LEN);
+		pinMode(intReq, INPUT);
+*/
 	}
 	
 }
@@ -215,20 +220,39 @@ inline void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 // Once an event has been notified it should not be notified anymore while
 // is still old... only at the time of reverse event the notifier should be
 // re-enabled.
+#define SET_EVENT(_evt_)			\
+	event = (0x1 << _evt_)
 inline void checkAlarms(void) {
+	unsigned long newFreq;
 	unsigned newFix;
+	uint8_t event;
+	
+	// Checking Moving Events...
+	newFreq = d_freq;
+	if (newFreq && !d_oldFreq) {
+		// START Moving Event
+		SET_EVENT(ODO_EVENT_MOVE);
+		notifyEvent(EVENT_CLASS_ODO, event);
+	} else if (!newFreq && d_oldFreq) {
+		// STOP Moving Event
+		SET_EVENT(ODO_EVENT_STOP);
+		notifyEvent(EVENT_CLASS_ODO, event);
+	}
+	d_oldFreq = newFreq;
 	
 	// Checking for EVENT_EMERGENCY_BREAK event
 	// NOTE Acceleration is always OK
 	if ( d_minEmergencyBreak ) {
 		
+		SET_EVENT(ODO_EVENT_EMERGENCY_BREAK);
+		
 		if ( d_df < 0 ) { // Decelleration: monitoring rate
 			d_df = -d_df*1000;
 			if ( (d_df/d_dt) > d_minEmergencyBreak &&
-				!(d_suspendedEvents[EVENT_CLASS_ODO] & ODO_EVENT_EMERGENCY_BREAK) ) {
+				!( d_suspendedEvents[EVENT_CLASS_ODO] & event ) ) {
 				
 				// Trigger an interrupt
-				notifyEvent(EVENT_CLASS_ODO, ODO_EVENT_EMERGENCY_BREAK);
+				notifyEvent(EVENT_CLASS_ODO, event);
 				
 				// NOTE this code SUPPOSE that we can't modify d_activeEvents
 				//	using AT Commands... otherwise we must pay attention
@@ -236,88 +260,78 @@ inline void checkAlarms(void) {
 				//	the user has required it to be disabled or not.
 				// Now that the event has been notified we suspend it until
 				// we return within the speed limit
-				d_suspendedEvents[EVENT_CLASS_ODO] |= ODO_EVENT_EMERGENCY_BREAK;
+				d_suspendedEvents[EVENT_CLASS_ODO] |= event;
 			}
 			
 		} else { // Acceleration reenable the event notify
-			d_suspendedEvents[EVENT_CLASS_ODO] &= ~ODO_EVENT_EMERGENCY_BREAK;
+			d_suspendedEvents[EVENT_CLASS_ODO] &= ~event;
 		}
 	}
 
 	// Checking for EVENT_OVER_SPEED event
 	if ( d_minOverSpeed ) {
 		
-		if ( d_freq > d_minOverSpeed && // Overspeed: event notify
-			!(d_suspendedEvents[EVENT_CLASS_ODO] & ODO_EVENT_OVER_SPEED)) {
+		if ( d_freq > d_minOverSpeed) { // Overspeed: event notify
 			
-			// Trigger an interrupt
-			notifyEvent(EVENT_CLASS_ODO, ODO_EVENT_OVER_SPEED);
+			// Over-speed reenable the SAFE_SPEED event notify
+			SET_EVENT(ODO_EVENT_SAFE_SPEED);
+			d_suspendedEvents[EVENT_CLASS_ODO] &= ~event;
 			
-			// NOTE this code SUPPOSE that we can't modify d_activeEvents
-			//	using AT Commands... otherwise we must pay attention
-			//	when disabling an event because we don't know anymore if
-			//	the user has required it to be disabled or not.
-			// Now that the event has been notified we suspend it until
-			// we return within the speed limit
-			d_suspendedEvents[EVENT_CLASS_ODO] |= ODO_EVENT_OVER_SPEED;
+			SET_EVENT(ODO_EVENT_OVER_SPEED);
+			if ( !(d_suspendedEvents[EVENT_CLASS_ODO] & event) ) {
+				// Trigger an interrupt
+				notifyEvent(EVENT_CLASS_ODO, event);
+				
+				// NOTE this code SUPPOSE that we can't modify d_activeEvents
+				//	using AT Commands... otherwise we must pay attention
+				//	when disabling an event because we don't know anymore if
+				//	the user has required it to be disabled or not.
+				// Now that the event has been notified we suspend it until
+				// we return within the speed limit
+				d_suspendedEvents[EVENT_CLASS_ODO] |= event;
+			}
 			
-		} else { // Safe speed reenable the event notify
-			d_suspendedEvents[EVENT_CLASS_ODO] &= ~ODO_EVENT_OVER_SPEED;
+		} else {
+			
+			// Safe speed reenable the OVER_SPEED event notify
+			SET_EVENT(ODO_EVENT_OVER_SPEED);
+			d_suspendedEvents[EVENT_CLASS_ODO] &= ~event;
+			
+			SET_EVENT(ODO_EVENT_SAFE_SPEED);
+			if ( !(d_suspendedEvents[EVENT_CLASS_ODO] & event) ) {
+				// Trigger an interrupt
+				notifyEvent(EVENT_CLASS_ODO, event);
+				
+				// NOTE this code SUPPOSE that we can't modify d_activeEvents
+				//	using AT Commands... otherwise we must pay attention
+				//	when disabling an event because we don't know anymore if
+				//	the user has required it to be disabled or not.
+				// Now that the event has been notified we suspend it until
+				// we return within the speed limit
+				d_suspendedEvents[EVENT_CLASS_ODO] |= event;
+			}
 		}
 	}
 	
 	// Checking GPS fix
 	newFix = gpsFix();
-	if (newFix != oldFix) {
-		if (newFix>0)
-			notifyEvent(EVENT_CLASS_GPS, GPS_EVENT_FIX_GET);
-		else
-			notifyEvent(EVENT_CLASS_GPS, GPS_EVENT_FIX_LOSE);
-		oldFix = newFix;
+	if (newFix != d_oldFix) {
+		if (newFix>0) {
+			SET_EVENT(GPS_EVENT_FIX_GET);
+		} else {
+			SET_EVENT(GPS_EVENT_FIX_LOSE);
+		}
+		notifyEvent(EVENT_CLASS_GPS, event);
+		d_oldFix = newFix;
 	}
 
 	// Event led control
 	if (d_pendingEvents[EVENT_CLASS_ODO] ||
 		d_pendingEvents[EVENT_CLASS_GPS]) {
-		digitalWrite(ledPin2, HIGH);
+		digitalWrite(led2, HIGH);
 	} else {
-		digitalWrite(ledPin2, LOW);
+		digitalWrite(led2, LOW);
 	}
-	
-}
-
-//----- System Initialization
-inline void setup(void) {
-
-	// GPS module power control
-	digitalWrite(gpsPowerPin, LOW);
-	pinMode(gpsPowerPin, OUTPUT);
-	
-	//Note: to assert an interrupt the INTR line should be asserted LOW for a while
-	pinMode(intPin, INPUT);
-	digitalWrite(intPin, LOW);
-	
-	// NMEA Parsing Activity LED
-	digitalWrite(led1, LOW);
-	pinMode(led1, OUTPUT);
-	// Events Pending Monitor LED
-	digitalWrite(ledPin2, LOW);
-	pinMode(ledPin2, OUTPUT);
-	// TO BE DEFINED
-	digitalWrite(ledPin3, LOW);
-	pinMode(ledPin3, OUTPUT);
-	
-	// Odometer INTR routine initialization
-	attachInterrupt(INTR0, countPulse, RISING);
-	
-	// Loop function static variables INITIALIZATION
-	t0 = millis();
-	c0 = d_pcount;
-	f0 = 0;
-	
-	// Powering on GPS and Optical Interrupt line
-	digitalWrite(gpsPowerPin, HIGH);
-	d_gpsPowerState = 1;
 	
 }
 
@@ -373,16 +387,91 @@ inline gpsUpdate(void) {
 	// Update GPS info; this call takes about 1s, this is the minimum
 	// 	delay for a speed update...
 	if ( checkInterrupt(INTR_GPS) ) {
-		digitalWrite(led1, LOW);
+// 		digitalWrite(led1, LOW);
 		gpsParse();
 		ackInterrupt(INTR_GPS);
-		digitalWrite(led1, HIGH);
+// 		digitalWrite(led1, HIGH);
 	}
 
 }
 
-inline void loop(void) {
+//----- System Initialization
+inline void setup(void) {
+
+	// Disable interrupts (just in case)
+	cli();
 	
+	// Disable JTAG interface
+	// This require TWICE writes in 4 CYCLES
+	MCUCSR |= 0x80;
+	MCUCSR |= 0x80;
+
+	// Inputs: MEMS (PA0, PA1 and PA2)
+	DDRA    = 0xF8;
+	// Disabling Pull-Ups
+	PORTA   = 0x00;
+	
+	// Outpust: LEDS(PC0-2), GPG PowerUp(PC3), Inputs(HiZ) INT_REQ(PC4)
+	DDRC	= 0x8F;
+	// Disabling Pull-Ups
+	PORTC	= 0x00;
+	
+	// Configure timers
+	initTime();
+	
+	// Configure UART ports
+	initSerials();
+	
+	// Configure GPS
+	initGps((unsigned long)GPS_VTG|GPS_GSV|GPS_GLL|GPS_GSA);
+	
+	// Enable interrupts
+	sei();
+
+	// GPS module power control
+	pinMode(gpsPowerPin, OUTPUT);
+	digitalWrite(gpsPowerPin, LOW);
+	
+	//Note: to assert an interrupt the INTR line should be asserted LOW for a while
+	pinMode(intReq, INPUT);
+	digitalWrite(intReq, LOW);
+	
+	// NMEA Parsing Activity LED
+	pinMode(led1, OUTPUT);
+	digitalWrite(led1, LOW);
+	
+	// Events Pending Monitor LED
+	pinMode(led2, OUTPUT);
+	digitalWrite(led2, LOW);
+	
+	// TO BE DEFINED
+	pinMode(led3, OUTPUT);
+	digitalWrite(led3, LOW);
+	
+	// Odometer INTR routine initialization
+	attachInterrupt(INTR0, countPulse, RISING);
+	
+	// Loop function static variables INITIALIZATION
+	t0 = millis();
+	c0 = d_pcount;
+	f0 = 0;
+	
+	// Powering on GPS and Optical Interrupt line
+	digitalWrite(gpsPowerPin, HIGH);
+	d_gpsPowerState = 1;
+	
+	// Initial data update
+	odoUpdate();
+	
+}
+
+inline void loop(void) {
+	unsigned long loop_t0, loop_t1;
+	
+	
+	loop_t0 = millis();
+	
+	digitalWrite(led1, LOW);
 	gpsUpdate();
 	
 	// Updating GPS and ODO data
@@ -392,6 +481,11 @@ inline void loop(void) {
 	// Check constraints and issue alarms
 	checkAlarms();
 	
+	loop_t1 = millis();
+	delay(500-(loop_t1-loop_t0));
+	
+	digitalWrite(led1, HIGH);
+	
 	// Display summary sentence
 	if (d_displayTime) {
 		display();
@@ -399,7 +493,7 @@ inline void loop(void) {
 	
 	// Execute user commands
 	if ( checkInterrupt(INTR_CMD) ) {
-// 		digitalSwitch(ledPin3);
+// 		digitalSwitch(led3);
 		doUserCmd();
 		ackInterrupt(INTR_CMD);
 	}
@@ -408,18 +502,10 @@ inline void loop(void) {
 
 int main(void) {
 
-	cli();			// Disable interrupts just in case
-	PORTA   = 0x00;		// Give PORTA and "led" a initial startvalue
-	DDRA    = 0xFF;		// Set PORTA as output
-	initTime();		// Configure timers
-	initSerials();		// Configure UART ports
-	initGps((unsigned long)GPS_VTG|GPS_GSV|GPS_GLL|GPS_GSA);
-	sei();			// Enable interrupts
-	
 	setup();
+	
 	Serial_printLine("AT Command ready");
 	
-	odoUpdate();		// Initial data update
 	while(1) {
 		loop();
 	}
