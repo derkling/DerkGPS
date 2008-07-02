@@ -25,7 +25,7 @@
 // #include "gps.h"
 
 /// Interrupt pin
-extern uint8_t intPin;
+extern uint8_t intReq;
 /// Golbal variables defined within derkgps.c
 extern volatile unsigned long d_pcount;
 /// Last computed odometer pulses frequency
@@ -331,7 +331,7 @@ inline int parseQueryCmd(int type) {
 				d_pendingEvents[EVENT_CLASS_ODO] = EVENT_NONE;
 				
 				// Releasgin interrupt pin
-				pinMode(intPin, INPUT);
+				pinMode(intReq, INPUT);
 				
 				goto pqc_ok;
 			}
