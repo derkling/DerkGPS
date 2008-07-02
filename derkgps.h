@@ -38,6 +38,7 @@ typedef enum {
 	ODO_EVENT_STOP,
 	ODO_EVENT_OVER_SPEED,
 	ODO_EVENT_EMERGENCY_BREAK,
+	ODO_EVENT_SAFE_SPEED,
 } derkgps_event_odo_t;
 
 typedef enum {
