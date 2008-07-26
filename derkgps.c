@@ -375,7 +375,7 @@ inline gpsUpdate(void) {
 
 	if (d_gpsPowerState == 0) {
 		// Powering off GPS
-		digitalWrite(gpsPowerPin, HIGH);
+		digitalWrite(gpsPowerPin, LOW);
 		digitalWrite(led1, LOW);
 		// Return with no other parsing
 		return;
@@ -387,10 +387,9 @@ inline gpsUpdate(void) {
 	// Update GPS info; this call takes about 1s, this is the minimum
 	// 	delay for a speed update...
 	if ( checkInterrupt(INTR_GPS) ) {
-// 		digitalWrite(led1, LOW);
+		digitalSwitch(led1);
 		gpsParse();
 		ackInterrupt(INTR_GPS);
-// 		digitalWrite(led1, HIGH);
 	}
 
 }
@@ -466,12 +465,7 @@ inline void setup(void) {
 }
 
 inline void loop(void) {
-	unsigned long loop_t0, loop_t1;
 	
-	
-	loop_t0 = millis();
-	
-	digitalWrite(led1, LOW);
 	gpsUpdate();
 	
 	// Updating GPS and ODO data
@@ -480,11 +474,6 @@ inline void loop(void) {
 	
 	// Check constraints and issue alarms
 	checkAlarms();
-	
-	loop_t1 = millis();
-	delay(500-(loop_t1-loop_t0));
-	
-	digitalWrite(led1, HIGH);
 	
 	// Display summary sentence
 	if (d_displayTime) {
@@ -504,6 +493,8 @@ int main(void) {
 
 	setup();
 	
+	Serial_printLine("             DerkGPS v1.0 (26-07-2008)                ");
+	Serial_printLine("Copyright 2008 by Patrick Bellasi <derkling@gmail.com>");
 	Serial_printLine("AT Command ready");
 	
 	while(1) {
