@@ -30,7 +30,7 @@
 #include "atinterface.h"
 #include "gps.h"
 
-#define OUTPUT_BUFFER_SIZE	64
+#define OUTPUT_BUFFER_SIZE	45
 
 //----- EVENT GENERATION
 typedef enum {
