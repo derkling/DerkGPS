@@ -339,6 +339,25 @@ void gpsConfig(unsigned long mask) {
 	enSentence = mask;
 }
 
+// Reset GPS variables state: to be called after a power down
+void gpsReset(void) {
+	lat = 99.999;
+	lon = 999.999;
+	utc = 0;
+	validity = FIX_INVALID;
+	kmh = 0;
+	dir = 0;
+	fix = FIX_NONE;
+	pdop = 100;
+	hdop = 100;
+	vdop = 100;
+	siv = 0;
+	date = 0;
+	knots = 0;
+	var = 0;
+	varEst = 1;
+}
+
 // This method should update just one sentence each time is called
 void gpsParse(void) {
 	gpsSentence_t type;

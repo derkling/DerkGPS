@@ -98,6 +98,10 @@ void initGps(unsigned long mask);
 /// @param confMask an ORed mask of gpsSentence_t to enable.
 void gpsConfig(unsigned long mask);
 
+/// Reset GPS variables state.
+/// This method must be called after a power-down
+void gpsReset(void);
+
 /// Update enabled sentences values.
 void gpsParse(void);
 
