@@ -62,7 +62,7 @@ uint8_t intReq      	=   10;	// Interrupt pin		(using PC4)
 /// Odometer pulses count
 volatile unsigned long d_pcount = 0;
 /// Last computed odometer pulses frequency
-unsigned long d_freq = 0;
+volatile unsigned long d_freq = 0;
 /// The old freq value used for Alarms Checking
 unsigned d_oldFreq = 0;
 /// Current max [ppm/s] EVENT_OVER_SPEED alarm
@@ -73,18 +73,20 @@ unsigned long d_minEmergencyBreak = 0;
 long d_df = 0;
 /// Time interval between last two update [s]
 unsigned long d_dt = 0;
+/// Last update time [ms]
+unsigned long d_odoLastUpdate = 0;
 
 //----- AT Interface
 /// Delay ~[s] between dispaly monitor sentences, if 0 DISABLED (default 0);
 unsigned d_displayTime = 5;
-/// Loop count for display hiding (Init=1 to have a display at first call)
-unsigned d_displayCount = 1;
 /// Buffer for sentence display formatting
 char d_displayBuff[OUTPUT_BUFFER_SIZE];
 /// ATinterface top-halves Interrupt scheduling flags
 short d_thIntrCMD = 0;
 
 //----- EVENT GENERATION
+/// Last update time [ms]
+unsigned long d_eventsLastUpdate = 0;
 /// Events enabled to generate signals
 //derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE}; // Disabling all interrupts by default
 derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = { 0x1F, 0x03 };
@@ -127,69 +129,50 @@ void formatDouble(double val, char *buf, int len) {
 	fractal = (long)(((double)val-(double)integer)*(double)10000);
 	fractal = (fractal<0) ? -fractal : fractal;
 	
-	snprintf(buf, len, "%+ld.%ld", integer, fractal);
+	snprintf(buf, len, "%+ld.%04ld", integer, fractal);
 }
 
 //----- Display monitor
-inline void display(void) {
-	unsigned long cur_count;
-	unsigned long cur_freq;
-	char cur_lat[12];
-	char cur_lon[13];
-	unsigned long time;
+void display(void) {
+	unsigned long cc = d_pcount;
+	unsigned long cf = d_freq;
+	unsigned long time = millis();
+	uint8_t ge = d_pendingEvents[EVENT_CLASS_GPS];
+	uint8_t oe = d_pendingEvents[EVENT_CLASS_ODO];
+	unsigned siv = gpsSatInView();
+	unsigned fix = gpsFix();
 	
-	time = millis()-d_displayLastUpdate;
-	if ( time < (d_displayCount*1000) )
+	time -= d_displayLastUpdate;
+	if ( time < (d_displayTime*1000) ) {
 		return;
-	
-// 	if (!--d_displayCount) {
-	cur_count = d_pcount;
-	cur_freq = d_freq;
-	formatDouble(gpsLat(), cur_lat, 12);
-	formatDouble(gpsLon(), cur_lon, 13);
+	}
 	
 	if (gpsIsPosValid()) {
+		// 26 Bytes for this first part
 		snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,
-			"0x%02X%02X %7lu %7lu %u %u %s %s",
-			d_pendingEvents[EVENT_CLASS_GPS],
-			d_pendingEvents[EVENT_CLASS_ODO],
-			cur_count, cur_freq,
-			gpsSatInView(), gpsFix(),
-			cur_lat, cur_lon);
+			"0x%02X%02X %8lu %4lu %2u %1u ",
+			ge, oe, cc, cf, siv, fix);
+		// This is what we have to append: "+99.9999 +999.9999"
+		formatDouble(gpsLat(), d_displayBuff+26, 9);
+		formatDouble(gpsLon(), d_displayBuff+26+9, 10);
+		d_displayBuff[26+8]=' ';
+		
+		// This call require a total of:
+		// 26+9+10=45 Bytes
+;
 	} else {
 		snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,
-			"0x%02X%02X %7lu %7lu %u %u NA NA",
-			d_pendingEvents[EVENT_CLASS_GPS],
-			d_pendingEvents[EVENT_CLASS_ODO],
-			cur_count, cur_freq,
-			gpsSatInView(), gpsFix());
+			"0x%02X%02X %8lu %4lu %2u %1u NA NA",
+			ge, oe, cc, cf, siv, fix);
 	}
 	
 	Serial_printLine(d_displayBuff);
-	d_displayCount = d_displayTime;
-// 	}
 	
 	d_displayLastUpdate = millis();
-	
-}
-
-//----- AT Control Interface
-inline void doUserCmd(void) {
-
-// 	if ( Serial_readLine(userCmd, DERKGPS_CMD_MAXLEN) == -1 ) {
-// 		return;
-// 	}
-// 	// Debugging: print received command
-// 	snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,
-// 			"CMD: %s", userCmd);
-// 	Serial_printLine(d_displayBuff);
-	
-	parseCommand();
-	
 }
 
 //----- Alarms control
-inline void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
+void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 	derkgps_event_t alreadyNotified;
 	derkgps_event_t intrEnabled;
 	
@@ -222,21 +205,32 @@ inline void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 // re-enabled.
 #define SET_EVENT(_evt_)			\
 	event = (0x1 << _evt_)
-inline void checkAlarms(void) {
+void checkAlarms(void) {
 	unsigned long newFreq;
 	unsigned newFix;
-	uint8_t event;
+	uint8_t event = 0;
+// 	unsigned long time;
+	
+// 	time = millis()-d_eventsLastUpdate;
+// 	if ( time < 500 )
+// 		return;
 	
 	// Checking Moving Events...
 	newFreq = d_freq;
-	if (newFreq && !d_oldFreq) {
-		// START Moving Event
-		SET_EVENT(ODO_EVENT_MOVE);
-		notifyEvent(EVENT_CLASS_ODO, event);
-	} else if (!newFreq && d_oldFreq) {
-		// STOP Moving Event
-		SET_EVENT(ODO_EVENT_STOP);
-		notifyEvent(EVENT_CLASS_ODO, event);
+	if ( d_oldFreq==0 ) {
+		if ( newFreq>0 ) {
+			// START Moving Event
+			SET_EVENT(ODO_EVENT_MOVE);
+			notifyEvent(EVENT_CLASS_ODO, event);
+			digitalWrite(led3, HIGH);
+		}
+	} else if ( newFreq==0 ) {
+		if ( d_oldFreq>0 ) {
+			// STOP Moving Event
+			SET_EVENT(ODO_EVENT_STOP);
+			notifyEvent(EVENT_CLASS_ODO, event);
+			digitalWrite(led3, LOW);
+		}
 	}
 	d_oldFreq = newFreq;
 	
@@ -333,6 +327,7 @@ inline void checkAlarms(void) {
 		digitalWrite(led2, LOW);
 	}
 	
+// 	d_eventsLastUpdate = millis();
 }
 
 /// @return 0 on successfull data update
@@ -344,6 +339,14 @@ int odoUpdate(void) {
 	t1 = millis();
 	c1 = d_pcount;
 	
+	// 511[ms] = 0x1FF
+	if ( (t1-d_odoLastUpdate)>>9 ) {
+		d_odoLastUpdate = t1;
+	} else {
+		// Less the 511 ms since last update
+		return -1;
+	}
+	
 	// NOTE millis() return the number of milliseconds since the current
 	// program started running, as an unsigned long.
 	// This number will overflow (go back to zero), after approximately 9 hours.
@@ -352,15 +355,19 @@ int odoUpdate(void) {
 	if (t1 < t0) {
 		t0 = t1;
 		c0 = c1;
-		return -1;
+		return -2;
 	}
 
 	// NOTE d_freq = dc/d_dt=dc/((t1-t0)/1000) => dc*1000/(t1-t0)
 	// this last formula is safer using unsigned long values due to truncation
 	//	of decimal digits ;-)
-	d_dt = (t1 - t0);			// Elapsed time in [s]
-	dc = (c1 - c0) * 1000;			// Pulses count variation
-	d_freq = (dc==0) ? 0 : (dc/d_dt);	// New frequency
+	if ( c1 == c0 ) {
+		d_freq = 0;
+	} else {
+		dc = (c1 - c0) * 1000;		// Pulses count variation
+		d_dt = (t1 - t0);		// Elapsed time in [s]
+		d_freq = (dc/d_dt);		// New frequency
+	}
 	d_df = d_freq - f0;			// Frequency variation
 
 	// Saving values for next cycle
@@ -371,12 +378,13 @@ int odoUpdate(void) {
 	return 0;
 }
 
-inline gpsUpdate(void) {
+void gpsUpdate(void) {
 
 	if (d_gpsPowerState == 0) {
 		// Powering off GPS
 		digitalWrite(gpsPowerPin, LOW);
 		digitalWrite(led1, LOW);
+		gpsReset();
 		// Return with no other parsing
 		return;
 	}
@@ -395,7 +403,7 @@ inline gpsUpdate(void) {
 }
 
 //----- System Initialization
-inline void setup(void) {
+void setup(void) {
 
 	// Disable interrupts (just in case)
 	cli();
@@ -466,9 +474,10 @@ inline void setup(void) {
 
 inline void loop(void) {
 	
+	// Updating GPS data
 	gpsUpdate();
 	
-	// Updating GPS and ODO data
+	// Updating ODO data
 	if (odoUpdate()!=0)
 		return;
 	
@@ -482,8 +491,7 @@ inline void loop(void) {
 	
 	// Execute user commands
 	if ( checkInterrupt(INTR_CMD) ) {
-// 		digitalSwitch(led3);
-		doUserCmd();
+		parseCommand();
 		ackInterrupt(INTR_CMD);
 	}
 
@@ -493,9 +501,10 @@ int main(void) {
 
 	setup();
 	
-	Serial_printLine("             DerkGPS v1.0 (26-07-2008)                ");
-	Serial_printLine("Copyright 2008 by Patrick Bellasi <derkling@gmail.com>");
-	Serial_printLine("AT Command ready");
+// 	Serial_printLine("             DerkGPS v1.0 (30-07-2008)                ");
+// 	Serial_printLine("Copyright 2008 by Patrick Bellasi <derkling@gmail.com>");
+	Serial_printLine("DerkGPS v1.0.0 by Patrick Bellasi");
+// 	Serial_printLine("AT Command ready");
 	
 	while(1) {
 		loop();
