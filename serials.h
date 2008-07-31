@@ -36,9 +36,11 @@
 #define UART0_BUFFER_SIZE 76
 // Schedule top-halves interrupt when >=64 bytes
 #define UART0_BUFFER_THLIMIT	72
-#define UART1_BUFFER_SIZE 48
-// Schedule top-halves interrupt when >=40 bytes
-#define UART1_BUFFER_THLIMIT	44
+// #define UART1_BUFFER_SIZE 48
+// // Schedule top-halves interrupt when >=40 bytes
+// #define UART1_BUFFER_THLIMIT	44
+#define UART1_BUFFER_SIZE	32
+#define UART1_BUFFER_THLIMIT	24
 
 // Define the line terminator (CR(\r) = 13 = 0x0D)
 #define LINE_TERMINATOR 0x0D
