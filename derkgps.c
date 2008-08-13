@@ -78,7 +78,7 @@ unsigned long d_odoLastUpdate = 0;
 
 //----- AT Interface
 /// Delay ~[s] between dispaly monitor sentences, if 0 DISABLED (default 0);
-unsigned d_displayTime = 5;
+unsigned d_displayTime = 0;
 /// Buffer for sentence display formatting
 char d_displayBuff[OUTPUT_BUFFER_SIZE];
 /// ATinterface top-halves Interrupt scheduling flags
@@ -503,7 +503,9 @@ int main(void) {
 	
 // 	Serial_printLine("             DerkGPS v1.0 (30-07-2008)                ");
 // 	Serial_printLine("Copyright 2008 by Patrick Bellasi <derkling@gmail.com>");
-	Serial_printLine("DerkGPS v1.0.0 by Patrick Bellasi");
+	if (d_displayTime) {
+		Serial_printLine("DerkGPS v1.0.0 by Patrick Bellasi");
+	}
 // 	Serial_printLine("AT Command ready");
 	
 	while(1) {
