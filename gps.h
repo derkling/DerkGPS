@@ -8,9 +8,6 @@
 
 #include "derkgps.h"
 
-/// Maximun number of sentences to wait for an update cycle
-#define GPS_MAXSENTENCE	10
-
 /// NMEA valid sentence type
 typedef enum sentenceType {
 	GPS_UNK = 0x00000000,	// Sentence not yet supported

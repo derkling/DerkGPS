@@ -14,23 +14,24 @@
 # define GpsDebugStr(STR)	printStr(UART1, STR)
 # define GpsDebugToken(STR)	printStr(UART1, STR); printStr(UART1, " ")
 # define GpsDebugNewLine()	printLine(UART1, "")
+# define GpsDebugDumpNMEA()			\
+	do {					\
+		byte = gpsReadSerial();		\
+		GpsDebugChr(byte);		\
+	} while ( byte != 0x0D );		\
+	return;
 #else
 # define GpsDebugChr(CHR)
 # define GpsDebugStr(STR)
 # define GpsDebugToken(STR)
 # define GpsDebugNewLine()
+# define GpsDebugDumpNMEA()
 #endif
-
-#define makeUpdated(SENTENCE)	toUpdate &= ~SENTENCE
 
 //-----[ Locals ]---------------------------------------------------------------
 
 /// The mask of enabled sentences
 unsigned long enSentence;
-/// Sentences not yet parsed
-unsigned long toUpdate;
-/// Max number of attempts to update a sentence type
-unsigned int maxSentences = 0;
 	
 //--- GLL - Geographic Position - Latitude/Longitude
 /// Last parsed Latitude
@@ -131,9 +132,11 @@ double minToDec(double nmea) {
 inline gpsSentence_t gpsParseType_G(void) {
 	
 	byte = gpsReadSerial();
+	GpsDebugChr(byte);
 	switch ( byte ) {
 	case 'L':
 		byte = gpsReadSerial();
+		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'L':
 			// GLL - Geographic Position - Latitude/Longitude
@@ -143,6 +146,7 @@ inline gpsSentence_t gpsParseType_G(void) {
 		}
 	case 'S':
 		byte = gpsReadSerial();
+		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'A':
 			// GSA - GPS DOP and active satellites
@@ -162,9 +166,11 @@ inline gpsSentence_t gpsParseType_G(void) {
 inline gpsSentence_t gpsParseType_R(void) {
 	
 	byte = gpsReadSerial();
+	GpsDebugChr(byte);
 	switch ( byte ) {
 	case 'M':
 		byte = gpsReadSerial();
+		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'C':
 			// RMC - Recommended Minimum Navigation Information
@@ -179,9 +185,11 @@ inline gpsSentence_t gpsParseType_R(void) {
 inline gpsSentence_t gpsParseType_V(void) {
 	
 	byte = gpsReadSerial();
+	GpsDebugChr(byte);
 	switch ( byte ) {
 	case 'T':
 		byte = gpsReadSerial();
+		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'G':
 			// VTG -  Track Made Good and Ground Speed
@@ -207,19 +215,22 @@ inline gpsSentence_t gpsParseType(void) {
 	
 	// Parse sentence type start
 	byte = gpsReadSerial();
+	GpsDebugChr(byte);
 	switch ( byte ) {
 		case 'G':
 			type = gpsParseType_G();
-			return type;
+			break;
 		case 'R':
 			type = gpsParseType_R();
-			return type;
+			break;
 		case 'V':
 			type = gpsParseType_V();
-			return type;
+			break;
+		default:
+			type = GPS_UNK;
 	}
 	
-	return GPS_UNK;
+	return type;
 	
 }
 
@@ -227,23 +238,24 @@ inline gpsSentence_t gpsParseType(void) {
 //--- Parsing sentences
 
 void updateLatLon(void) {
-	gpsGetToken(buff); GpsDebugToken(buff);
+	
+	gpsGetToken(buff); //GpsDebugToken(buff);
 	lat  = strtod(buff, (char **)NULL);
-	gpsGetToken(buff); GpsDebugToken(buff);
+	gpsGetToken(buff); //GpsDebugToken(buff);
 	if (buff[0] == 'S')
 		lat = -lat;
 
-	gpsGetToken(buff); GpsDebugToken(buff);
+	gpsGetToken(buff); //GpsDebugToken(buff);
 	lon  = strtod(buff, (char **)NULL);
-	gpsGetToken(buff); GpsDebugToken(buff);
+	gpsGetToken(buff); //GpsDebugToken(buff);
 	if (buff[0] == 'W')
 		lon = -lon;
 }
 
 // GLL - Geographic Position - Latitude/Longitude
 inline void gpsParseGLL(void) {
-	
-	GpsDebugStr("GLL ");
+
+	GpsDebugDumpNMEA();
 	
 	updateLatLon();
 	
@@ -253,24 +265,38 @@ inline void gpsParseGLL(void) {
 	gpsGetToken(buff);
 	validity = (buff[0] == 'A') ? FIX_VALID : FIX_INVALID;
 	
-	GpsDebugNewLine();
-	
 }
 
 // VTG - Track made good and Ground speed
 inline void gpsParseVTG(void) {
+
+	GpsDebugDumpNMEA();
+
+	if (!validity)
+		return;
 	
 	gpsGetToken(buff);
-	dir = strtod(buff, (char **)NULL);
-
+	if (buff[0]!=0) {
+		// The Track Degrees is not present when not computed
+		GpsDebugToken(buff);
+		dir = strtod(buff, (char **)NULL);
+	} else {
+		// Don't update dir when it is not computed by the GPS
+		GpsDebugToken("?");
+	}
+	
 	gpsNextToken(5);
 	gpsGetToken(buff);
+	GpsDebugToken(buff);
 	kmh = strtod(buff, (char **)NULL);
 	knots = (unsigned long)(kmh/1.852);
+	
 }
 
 // GSA - GPS DOP and active satellites
 inline void gpsParseGSA(void) {
+
+	GpsDebugDumpNMEA();
 	
 	gpsNextToken(1);
 	gpsGetToken(buff);
@@ -295,10 +321,14 @@ inline void gpsParseGSA(void) {
 	
 	gpsGetToken(buff);
 	vdop = strtod(buff, (char **)NULL);
+	
 }
 
 // GSV - 
 inline void gpsParseGSV(void) {
+
+	GpsDebugDumpNMEA();
+
 	gpsNextToken(2);
 	gpsGetToken(buff);
 	siv = strtoul(buff, (char **)NULL, 10);
@@ -306,6 +336,8 @@ inline void gpsParseGSV(void) {
 
 // RMC - 
 inline void gpsParseRMC(void) {
+
+	GpsDebugDumpNMEA();
 
 	gpsGetToken(buff);
 	utc = strtoul(buff, (char **)NULL, 10);
@@ -361,49 +393,38 @@ void gpsReset(void) {
 // This method should update just one sentence each time is called
 void gpsParse(void) {
 	gpsSentence_t type;
-	
-	if (!toUpdate || !maxSentences) {
-		// Start a new update
-		toUpdate = enSentence;
-		maxSentences = GPS_MAXSENTENCE;
-	}
-	
-// 	while(toUpdate && maxSentences) {
 		
 	// Ckecking if the pending sentence is of interest
 	type = gpsParseType();
-	if ( !gpsSentenceEnabled(type) ) {
-		maxSentences--;
-// 		continue;
-		return;
-	}
-	
 	switch(type) {
 	case GPS_GLL:
 		gpsParseGLL();
-		makeUpdated(GPS_GLL);
+		//makeUpdated(GPS_GLL);
 		break;
 	case GPS_GSA:
 		gpsParseGSA();
-		makeUpdated(GPS_GSA);
+		//makeUpdated(GPS_GSA);
 		break;
 	case GPS_GSV:
 		gpsParseGSV();
-		makeUpdated(GPS_GSV);
+		//makeUpdated(GPS_GSV);
 		break;
 	case GPS_RMC:
 		gpsParseRMC();
-		makeUpdated(GPS_RMC);
+		//makeUpdated(GPS_RMC);
 		break;
 	case GPS_VTG:
 		gpsParseVTG();
-		makeUpdated(GPS_VTG);
+		//makeUpdated(GPS_VTG);
 		break;
-	default:
-		return;
 	}
 	
-// 	}
+	GpsDebugNewLine();
+	
+	// Consuming input buffer until we reach the CR char
+	do {
+		byte = gpsReadSerial();
+	} while ( byte != 0x0D );
 	
 }
 
