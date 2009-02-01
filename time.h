@@ -25,16 +25,8 @@
 
 #include "pins.h"
 
-#ifdef __cplusplus
-extern "C"{
-#endif
-
 unsigned long millis(void);
 void delay(unsigned long ms);
 void initTimings(void);
-
-#ifdef __cplusplus
-} // extern "C"
-#endif
 
 #endif

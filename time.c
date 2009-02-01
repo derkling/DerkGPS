@@ -20,16 +20,14 @@
 
 */
 
-#include "atmega162.h"
+#include "at90can.h"
 
-#define sbi(sfr, bit) (_SFR_BYTE(sfr) |= _BV(bit))
-
-// The number of times timer 0 has overflowed since the program started.
+// The number of times timer 1 has overflowed since the program started.
 // Must be volatile or gcc will optimize away some uses of it.
-volatile unsigned long timer0_overflow_count;
+volatile unsigned long timer1_overflow_count;
 
 unsigned long millis(void) {
-	// timer 0 increments every 64 cycles, and overflows when it reaches
+	// timer 1 increments every 64 cycles, and overflows when it reaches
 	// 256.  we would calculate the total number of clock cycles, then
 	// divide by the number of clock cycles per millisecond, but this
 	// overflows too often.
@@ -48,14 +46,15 @@ void delay(unsigned long ms) {
 }
 
 void initTime(void) {
+	
 	// this needs to be called before setup() or some functions won't
 	// work there
 	sei();
 	
-	// timer 0 is used for millis() and delay()
-	timer0_overflow_count = 0;
+	// timer 1 is used for millis() and delay()
+	timer1_overflow_count = 0;
 	
-	// set timer 0 prescale factor to 64
+	// set timer 1 prescale factor to 64
 	sbi(TCCR0, CS01);
 	sbi(TCCR0, CS00);
 

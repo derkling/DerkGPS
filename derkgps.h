@@ -30,7 +30,10 @@
 #include "atinterface.h"
 #include "gps.h"
 
-#define OUTPUT_BUFFER_SIZE	45
+// Uncomment to enable GPS sentence testing...
+//#define TEST_GPS
+
+#define OUTPUT_BUFFER_SIZE	47
 
 //----- EVENT GENERATION
 typedef enum {
@@ -39,11 +42,14 @@ typedef enum {
 	ODO_EVENT_OVER_SPEED,
 	ODO_EVENT_EMERGENCY_BREAK,
 	ODO_EVENT_SAFE_SPEED,
+	ODO_EVENT_DISTANCE,
 } derkgps_event_odo_t;
 
 typedef enum {
 	GPS_EVENT_FIX_GET	= 0,
 	GPS_EVENT_FIX_LOSE,
+	GPS_EVENT_MOVE,
+	GPS_EVENT_STOP,
 } derkgps_event_gps_t;
 
 /// Event mask defining the events enabled to generate signals

@@ -40,6 +40,12 @@ extern unsigned d_displayTime;
 extern unsigned d_gpsPowerState;
 /// Events pending to be ACKed
 extern derkgps_event_t d_pendingEvents[EVENT_CLASS_TOT];
+/// How long an interrupt last [ms]
+extern unsigned d_intrTimeout;
+/// Pulses between distance interrupts
+extern unsigned d_distIntrPCount;
+/// Pulses of next distance interrupt
+extern unsigned long d_distIntrNext;
 
 /// The buffer for output and result return
 extern char d_displayBuff[OUTPUT_BUFFER_SIZE];
@@ -129,6 +135,26 @@ inline int parseAlarmCmd(int type) {
 			goto pac_error;
 		}
 		goto pac_error;
+	case 'P':
+		switch(cmdRead()) { 
+		case 'C':
+			switch(cmdLook()) {
+			case LINE_TERMINATOR:
+				cmdRead();
+			case '+':
+				// READ  "Pulse Count Interrupt"
+				ShowValueU(d_distIntrPCount);
+				goto pac_ok;
+			case '=': // WRITE "Pulse Count Interrupt"
+				cmdRead();
+				ReadValueU(d_distIntrPCount);
+				d_distIntrNext = d_pcount+d_distIntrPCount;
+				goto pac_ok;
+			}
+			goto pac_error;
+		}
+		goto pac_error;
+
 	case 'S':
 		switch(cmdRead()) { 
 		case 'L':
@@ -182,6 +208,20 @@ inline int parseGpsCmd(int type) {
 			case '+':
 				// READ  "Ground speed"
 				ShowValueD(gpsSpeed());
+				goto pgc_ok;
+			}
+			goto pgc_error;
+		}
+		goto pgc_error;
+	case 'H':
+		switch(cmdRead()) {
+		case 'P':
+			switch(cmdLook()) {
+			case LINE_TERMINATOR:
+				cmdRead();
+			case '+':
+				// READ  "HDOP"
+				ShowValueD(gpsHdop());
 				goto pgc_ok;
 			}
 			goto pgc_error;
@@ -308,6 +348,25 @@ inline int parseQueryCmd(int type) {
 	unsigned long events;
 	
 	switch(cmdRead()) {
+	case 'C':
+		switch(cmdRead()) {
+		case 'M':
+			switch(cmdLook()) {
+			case LINE_TERMINATOR:
+				cmdRead();
+			case '+':
+				// READ  "Continuous monitor"
+				ShowValueU(d_displayTime);
+				goto pqc_ok;
+			case '=':
+				// WRITE "Continuous monitor"
+				cmdRead();
+				ReadValueU(d_displayTime);
+				goto pqc_ok;
+			}
+			goto pqc_error;
+		}
+		goto pqc_error;
 	case 'E':
 		switch(cmdRead()) {
 		case 'R':
@@ -338,20 +397,20 @@ inline int parseQueryCmd(int type) {
 			goto pqc_error;
 		}
 		goto pqc_error;
-	case 'C':
+	case 'I':
 		switch(cmdRead()) {
-		case 'M':
+		case 'T':
 			switch(cmdLook()) {
 			case LINE_TERMINATOR:
 				cmdRead();
 			case '+':
-				// READ  "Continuous monitor"
-				ShowValueU(d_displayTime);
+				// READ  "Interrupt timeout"
+				ShowValueU(d_intrTimeout);
 				goto pqc_ok;
 			case '=':
-				// WRITE "Continuous monitor"
+				// WRITE "Interrupt timeout"
 				cmdRead();
-				ReadValueU(d_displayTime);
+				ReadValueU(d_intrTimeout);
 				goto pqc_ok;
 			}
 			goto pqc_error;

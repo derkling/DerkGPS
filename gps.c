@@ -9,7 +9,7 @@
 #define GpsRead()	read(UART0)
 #define GpsAvailable()	available(UART0)
 
-#if 0
+#ifdef TEST_GPS
 # define GpsDebugChr(CHR)	print(UART1, CHR)
 # define GpsDebugStr(STR)	printStr(UART1, STR)
 # define GpsDebugToken(STR)	printStr(UART1, STR); printStr(UART1, " ")
@@ -85,13 +85,19 @@ void initGps(unsigned long mask) {
 
 //----- Local utility methods
 char gpsReadSerial(void) {
-
+	char byte;
+	
 	// Waiting for a char being available...
 	while ( !GpsAvailable() )
 		;
 
 	// Read the incoming byte
-	return GpsRead();
+	byte = GpsRead();
+	
+	// Echoing readed char (if TEST_GPS defined)
+	GpsDebugChr(byte);
+	
+	return byte;
 	
 }
 
@@ -132,11 +138,11 @@ double minToDec(double nmea) {
 inline gpsSentence_t gpsParseType_G(void) {
 	
 	byte = gpsReadSerial();
-	GpsDebugChr(byte);
+// 	GpsDebugChr(byte);
 	switch ( byte ) {
 	case 'L':
 		byte = gpsReadSerial();
-		GpsDebugChr(byte); GpsDebugChr(' ');
+// 		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'L':
 			// GLL - Geographic Position - Latitude/Longitude
@@ -146,7 +152,7 @@ inline gpsSentence_t gpsParseType_G(void) {
 		}
 	case 'S':
 		byte = gpsReadSerial();
-		GpsDebugChr(byte); GpsDebugChr(' ');
+// 		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'A':
 			// GSA - GPS DOP and active satellites
@@ -166,11 +172,11 @@ inline gpsSentence_t gpsParseType_G(void) {
 inline gpsSentence_t gpsParseType_R(void) {
 	
 	byte = gpsReadSerial();
-	GpsDebugChr(byte);
+// 	GpsDebugChr(byte);
 	switch ( byte ) {
 	case 'M':
 		byte = gpsReadSerial();
-		GpsDebugChr(byte); GpsDebugChr(' ');
+// 		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'C':
 			// RMC - Recommended Minimum Navigation Information
@@ -185,11 +191,11 @@ inline gpsSentence_t gpsParseType_R(void) {
 inline gpsSentence_t gpsParseType_V(void) {
 	
 	byte = gpsReadSerial();
-	GpsDebugChr(byte);
+// 	GpsDebugChr(byte);
 	switch ( byte ) {
 	case 'T':
 		byte = gpsReadSerial();
-		GpsDebugChr(byte); GpsDebugChr(' ');
+// 		GpsDebugChr(byte); GpsDebugChr(' ');
 		switch (byte) {
 		case 'G':
 			// VTG -  Track Made Good and Ground Speed
@@ -215,7 +221,7 @@ inline gpsSentence_t gpsParseType(void) {
 	
 	// Parse sentence type start
 	byte = gpsReadSerial();
-	GpsDebugChr(byte);
+// 	GpsDebugChr(byte);
 	switch ( byte ) {
 		case 'G':
 			type = gpsParseType_G();
@@ -255,7 +261,7 @@ void updateLatLon(void) {
 // GLL - Geographic Position - Latitude/Longitude
 inline void gpsParseGLL(void) {
 
-	GpsDebugDumpNMEA();
+// 	GpsDebugDumpNMEA();
 	
 	updateLatLon();
 	
@@ -270,7 +276,7 @@ inline void gpsParseGLL(void) {
 // VTG - Track made good and Ground speed
 inline void gpsParseVTG(void) {
 
-	GpsDebugDumpNMEA();
+// 	GpsDebugDumpNMEA();
 
 	if (!validity)
 		return;
@@ -287,7 +293,7 @@ inline void gpsParseVTG(void) {
 	
 	gpsNextToken(5);
 	gpsGetToken(buff);
-	GpsDebugToken(buff);
+// 	GpsDebugToken(buff);
 	kmh = strtod(buff, (char **)NULL);
 	knots = (unsigned long)(kmh/1.852);
 	
@@ -296,7 +302,7 @@ inline void gpsParseVTG(void) {
 // GSA - GPS DOP and active satellites
 inline void gpsParseGSA(void) {
 
-	GpsDebugDumpNMEA();
+// 	GpsDebugDumpNMEA();
 	
 	gpsNextToken(1);
 	gpsGetToken(buff);
@@ -327,7 +333,7 @@ inline void gpsParseGSA(void) {
 // GSV - 
 inline void gpsParseGSV(void) {
 
-	GpsDebugDumpNMEA();
+// 	GpsDebugDumpNMEA();
 
 	gpsNextToken(2);
 	gpsGetToken(buff);
@@ -337,7 +343,7 @@ inline void gpsParseGSV(void) {
 // RMC - 
 inline void gpsParseRMC(void) {
 
-	GpsDebugDumpNMEA();
+// 	GpsDebugDumpNMEA();
 
 	gpsGetToken(buff);
 	utc = strtoul(buff, (char **)NULL, 10);
@@ -393,6 +399,7 @@ void gpsReset(void) {
 // This method should update just one sentence each time is called
 void gpsParse(void) {
 	gpsSentence_t type;
+	unsigned char chksum = 0;
 		
 	// Ckecking if the pending sentence is of interest
 	type = gpsParseType();
@@ -419,7 +426,7 @@ void gpsParse(void) {
 		break;
 	}
 	
-	GpsDebugNewLine();
+// 	GpsDebugNewLine();
 	
 	// Consuming input buffer until we reach the CR char
 	do {
@@ -445,11 +452,11 @@ double gpsLon(void) {
 	return 999.999;
 }
 
-unsigned long	gpsTime(void) {
+unsigned long gpsTime(void) {
 	return utc;
 }
 
-short	gpsIsPosValid(void) {
+short gpsIsPosValid(void) {
 	return validity;
 }
 

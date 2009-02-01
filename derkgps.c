@@ -39,7 +39,7 @@
 //	m/s * p/m = p/s     =>      d_speed * d_ppm = d_freq
 
 
-#define DERKGPS_INTR_LEN        200
+#define DERKGPS_INTR_LEN        1
 
 //----- DIGITAL PINS
 // #define USE_DIP_PACKAGE
@@ -75,6 +75,10 @@ long d_df = 0;
 unsigned long d_dt = 0;
 /// Last update time [ms]
 unsigned long d_odoLastUpdate = 0;
+/// Pulses between distance interrupts
+unsigned d_distIntrPCount = 0;
+/// Pulses of next distance interrupt
+unsigned long d_distIntrNext = 0;
 
 //----- AT Interface
 /// Delay ~[s] between dispaly monitor sentences, if 0 DISABLED (default 0);
@@ -85,15 +89,19 @@ char d_displayBuff[OUTPUT_BUFFER_SIZE];
 short d_thIntrCMD = 0;
 
 //----- EVENT GENERATION
-/// Last update time [ms]
-unsigned long d_eventsLastUpdate = 0;
-/// Events enabled to generate signals
+///// Last update time [ms]
+// unsigned long d_eventsLastUpdate = 0;
+///// Events enabled to generate signals
 //derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE}; // Disabling all interrupts by default
-derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = { 0x1F, 0x03 };
+derkgps_event_t d_activeEvents[EVENT_CLASS_TOT] = { 0x3F, 0x03 };
 /// Events suspended by this code to avoid interrupt storms
 derkgps_event_t d_suspendedEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE};
 /// Events pending to be ACKed
 derkgps_event_t d_pendingEvents[EVENT_CLASS_TOT] = {EVENT_NONE, EVENT_NONE};
+/// Time to reset interrupt line if not readed before [ms]
+unsigned long d_intrResetTime = 0;
+/// How long an interrupt last [ms]
+unsigned d_intrTimeout = 30000;
 
 //----- GPS DATA
 /// The GPS power state: 1=ON, 0=OFF
@@ -132,6 +140,54 @@ void formatDouble(double val, char *buf, int len) {
 	snprintf(buf, len, "%+ld.%04ld", integer, fractal);
 }
 
+char formatHDOP(void) {
+	unsigned hdop;
+	
+	hdop = gpsHdop()*10;
+	
+	if ( hdop>210) {
+		// POOR
+		// At this level, measurements are inaccurate by as much as half
+		// a football field and should be discarded.
+		return 'P';
+	}
+	if ( hdop>90) {
+		// FAIR
+		// Represents a low confidence level. Positional measurements
+		// should be discarded or used only to indicate a very rough
+		// estimate of the current location.
+		return 'F';
+	}
+	if ( hdop>70) {
+		// MODERATE
+		// Positional measurements could be used for calculations, but
+		// the fix quality could still be improved. A more open view of
+		// the sky is recommended.
+		return 'M';
+	}
+	if ( hdop>40) {
+		// GOOD
+		// Represents a level that marks the minimum appropriate for
+		// making business decisions. Positional measurements could be
+		// used to make reliable in-route navigation suggestions to the
+		// user.
+		return 'G';
+	}
+	if ( hdop>20) {
+		// EXCELLENT
+		// At this confidence level, positional measurements are
+		// considered accurate enough to meet all but the most
+		// sensitive applications.
+		return 'E';
+	}
+	
+	// IDEAL
+	// This is the highest possible confidence level to be used for
+	// applications demanding the highest possible precision at all times
+	return 'I';
+
+}
+
 //----- Display monitor
 void display(void) {
 	unsigned long cc = d_pcount;
@@ -141,6 +197,7 @@ void display(void) {
 	uint8_t oe = d_pendingEvents[EVENT_CLASS_ODO];
 	unsigned siv = gpsSatInView();
 	unsigned fix = gpsFix();
+	char hdop = formatHDOP();
 	
 	time -= d_displayLastUpdate;
 	if ( time < (d_displayTime*1000) ) {
@@ -148,22 +205,21 @@ void display(void) {
 	}
 	
 	if (gpsIsPosValid()) {
-		// 26 Bytes for this first part
+		// 28 Bytes for this first part
 		snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,
-			"0x%02X%02X %8lu %4lu %2u %1u ",
-			ge, oe, cc, cf, siv, fix);
+			"0x%02X%02X %8lu %4lu %2u %1u %1c ",
+			ge, oe, cc, cf, siv, fix, hdop);
 		// This is what we have to append: "+99.9999 +999.9999"
-		formatDouble(gpsLat(), d_displayBuff+26, 9);
-		formatDouble(gpsLon(), d_displayBuff+26+9, 10);
-		d_displayBuff[26+8]=' ';
+		formatDouble(gpsLat(), d_displayBuff+28, 9);
+		formatDouble(gpsLon(), d_displayBuff+28+9, 10);
+		d_displayBuff[28+8]=' ';
 		
 		// This call require a total of:
-		// 26+9+10=45 Bytes
-;
+		// 28+9+10=47 Bytes;
 	} else {
 		snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,
-			"0x%02X%02X %8lu %4lu %2u %1u NA NA",
-			ge, oe, cc, cf, siv, fix);
+			"0x%02X%02X %8lu %4lu %2u %1u %1c NA NA",
+			ge, oe, cc, cf, siv, fix, hdop);
 	}
 	
 	Serial_printLine(d_displayBuff);
@@ -180,21 +236,28 @@ void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 // 	event = 0x01<<event;
 	
 	// Not-null iff this event is enabled to generate interrupt
-	intrEnabled = d_activeEvents[event_class] & event;
+	intrEnabled = d_activeEvents[event_class] & (unsigned char)event;
 	
 	// Not-null iff this event is already pending to be ACKed
-	alreadyNotified = d_pendingEvents[event_class] & event;
+	alreadyNotified = d_pendingEvents[event_class] & (unsigned char)event;
 	
 	// saving event
-	d_pendingEvents[event_class] |= event;
+	d_pendingEvents[event_class] |= (unsigned char)event;
 	
 	// looking if it has to be notified
 	if (intrEnabled && !alreadyNotified) {
 		pinMode(intReq, OUTPUT);
-/* Wait until the interrupt has been read
+#ifdef DERKGPS_INTR_LEN
+//* Wait until the interrupt has been read
 		delay(DERKGPS_INTR_LEN);
 		pinMode(intReq, INPUT);
-*/
+#endif
+		if ( d_intrTimeout>0 ) {
+			d_intrResetTime  = millis();
+			d_intrResetTime += d_intrTimeout;
+		}
+
+
 	}
 	
 }
@@ -215,7 +278,7 @@ void checkAlarms(void) {
 // 	if ( time < 500 )
 // 		return;
 	
-	// Checking Moving Events...
+	// Checking ODO Moving Events...
 	newFreq = d_freq;
 	if ( d_oldFreq==0 ) {
 		if ( newFreq>0 ) {
@@ -234,6 +297,21 @@ void checkAlarms(void) {
 	}
 	d_oldFreq = newFreq;
 	
+/*
+	// Checking GPS Moving Events...
+	if ( gpsSpeed() > MIN_MOVE_SPEED ) {
+		// START Moving Event
+		SET_EVENT(GPS_EVENT_MOVE);
+		notifyEvent(EVENT_CLASS_GPS, event);
+		digitalWrite(led3, HIGH);
+	} else {
+		// STOP Moving Event
+		SET_EVENT(GPS_EVENT_STOP);
+		notifyEvent(EVENT_CLASS_GPS, event);
+		digitalWrite(led3, LOW);
+	}
+*/
+	
 	// Checking for EVENT_EMERGENCY_BREAK event
 	// NOTE Acceleration is always OK
 	if ( d_minEmergencyBreak ) {
@@ -243,7 +321,7 @@ void checkAlarms(void) {
 		if ( d_df < 0 ) { // Decelleration: monitoring rate
 			d_df = -d_df*1000;
 			if ( (d_df/d_dt) > d_minEmergencyBreak &&
-				!( d_suspendedEvents[EVENT_CLASS_ODO] & event ) ) {
+				!( d_suspendedEvents[EVENT_CLASS_ODO] & (unsigned char)event ) ) {
 				
 				// Trigger an interrupt
 				notifyEvent(EVENT_CLASS_ODO, event);
@@ -254,11 +332,11 @@ void checkAlarms(void) {
 				//	the user has required it to be disabled or not.
 				// Now that the event has been notified we suspend it until
 				// we return within the speed limit
-				d_suspendedEvents[EVENT_CLASS_ODO] |= event;
+				d_suspendedEvents[EVENT_CLASS_ODO] |= (unsigned char)event;
 			}
 			
 		} else { // Acceleration reenable the event notify
-			d_suspendedEvents[EVENT_CLASS_ODO] &= ~event;
+			d_suspendedEvents[EVENT_CLASS_ODO] &= (unsigned char)~event;
 		}
 	}
 
@@ -269,10 +347,10 @@ void checkAlarms(void) {
 			
 			// Over-speed reenable the SAFE_SPEED event notify
 			SET_EVENT(ODO_EVENT_SAFE_SPEED);
-			d_suspendedEvents[EVENT_CLASS_ODO] &= ~event;
+			d_suspendedEvents[EVENT_CLASS_ODO] &= (unsigned char)~event;
 			
 			SET_EVENT(ODO_EVENT_OVER_SPEED);
-			if ( !(d_suspendedEvents[EVENT_CLASS_ODO] & event) ) {
+			if ( !(d_suspendedEvents[EVENT_CLASS_ODO] & (unsigned char)event) ) {
 				// Trigger an interrupt
 				notifyEvent(EVENT_CLASS_ODO, event);
 				
@@ -282,17 +360,17 @@ void checkAlarms(void) {
 				//	the user has required it to be disabled or not.
 				// Now that the event has been notified we suspend it until
 				// we return within the speed limit
-				d_suspendedEvents[EVENT_CLASS_ODO] |= event;
+				d_suspendedEvents[EVENT_CLASS_ODO] |= (unsigned char)event;
 			}
 			
 		} else {
 			
 			// Safe speed reenable the OVER_SPEED event notify
 			SET_EVENT(ODO_EVENT_OVER_SPEED);
-			d_suspendedEvents[EVENT_CLASS_ODO] &= ~event;
+			d_suspendedEvents[EVENT_CLASS_ODO] &= (unsigned char)~event;
 			
 			SET_EVENT(ODO_EVENT_SAFE_SPEED);
-			if ( !(d_suspendedEvents[EVENT_CLASS_ODO] & event) ) {
+			if ( !(d_suspendedEvents[EVENT_CLASS_ODO] & (unsigned char)event) ) {
 				// Trigger an interrupt
 				notifyEvent(EVENT_CLASS_ODO, event);
 				
@@ -302,9 +380,12 @@ void checkAlarms(void) {
 				//	the user has required it to be disabled or not.
 				// Now that the event has been notified we suspend it until
 				// we return within the speed limit
-				d_suspendedEvents[EVENT_CLASS_ODO] |= event;
+				d_suspendedEvents[EVENT_CLASS_ODO] |= (unsigned char)event;
 			}
 		}
+		
+		// Checking GPS OverSpeed Events...
+		
 	}
 	
 	// Checking GPS fix
@@ -319,6 +400,19 @@ void checkAlarms(void) {
 		d_oldFix = newFix;
 	}
 
+	// Checking ODO distance interrupt
+	if ( d_distIntrPCount>0 &&
+		d_pcount>d_distIntrNext ) {
+		SET_EVENT(ODO_EVENT_DISTANCE);
+		notifyEvent(EVENT_CLASS_ODO, event);
+		d_distIntrNext  = d_pcount;
+		d_distIntrNext += d_distIntrPCount;
+// 		snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,
+// 			"Next PCount Intr @ %8lu",
+// 			d_distIntrNext);
+// 		Serial_printLine(d_displayBuff);
+	}
+
 	// Event led control
 	if (d_pendingEvents[EVENT_CLASS_ODO] ||
 		d_pendingEvents[EVENT_CLASS_GPS]) {
@@ -328,6 +422,18 @@ void checkAlarms(void) {
 	}
 	
 // 	d_eventsLastUpdate = millis();
+
+	// Releasing interrupt line after a safe timeout period
+	if ( d_intrTimeout>0 &&
+		d_intrResetTime < millis() ) {
+		// NOTE these interrupts are loose!... if we are not
+		//	able to read them within the timeout: than it should
+		//	be safer to remove them and go ahead
+		d_pendingEvents[EVENT_CLASS_ODO] = EVENT_NONE;
+		d_pendingEvents[EVENT_CLASS_GPS] = EVENT_NONE;
+		pinMode(intReq, INPUT);
+	}
+
 }
 
 /// @return 0 on successfull data update
@@ -410,8 +516,8 @@ void setup(void) {
 	
 	// Disable JTAG interface
 	// This require TWICE writes in 4 CYCLES
-	MCUCSR |= 0x80;
-	MCUCSR |= 0x80;
+	MCUCSR |= (unsigned char)0x80;
+	MCUCSR |= (unsigned char)0x80;
 
 	// Inputs: MEMS (PA0, PA1 and PA2)
 	DDRA    = 0xF8;
@@ -477,6 +583,7 @@ inline void loop(void) {
 	// Updating GPS data
 	gpsUpdate();
 	
+#ifndef TEST_GPS
 	// Updating ODO data
 	if (odoUpdate()!=0)
 		return;
@@ -488,7 +595,7 @@ inline void loop(void) {
 	if (d_displayTime) {
 		display();
 	}
-	
+#endif
 	// Execute user commands
 	if ( checkInterrupt(INTR_CMD) ) {
 		parseCommand();

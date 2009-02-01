@@ -1,6 +1,13 @@
 /*
   gps.h - Interface to serial GPS
   Copyright (c) 2007 Patrick Bellasi.  All right reserved.
+  
+  
+  GPS Engine report:
+  $GPTXT,01,01,02,u-blox ag - www.u-blox.com*50
+  $GPTXT,01,01,02,ANTARIS ATR062x HW 80040001*26
+  $GPTXT,01,01,02,ROM CORE       5.00    Jan 09 2006 12:00:00*76
+  $GPTXT,01,01,02,LIC 1EBF-BD07-E83D-6BE1-0F7A*50
 */
 
 #ifndef gps_h
@@ -86,6 +93,8 @@ typedef enum sentenceType {
 #define NORD		1
 #define OVEST		0
 #define EST		1
+
+#define MIN_MOVE_SPEED  2.0
 
 /// Initialize GPS data structures
 /// @param mask the ORed mask of gpsSentence_t sentences to parse at each update

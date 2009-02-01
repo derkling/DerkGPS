@@ -46,9 +46,10 @@ void initSerials(void) {
 	UBRR0H = (uint8_t)(UART_BAUD_CALC(UART0_BAUD_RATE,F_CPU)>>8);
 	UBRR0L = (uint8_t)UART_BAUD_CALC(UART0_BAUD_RATE,F_CPU);
 	// Enable receiver and transmitter; enable RX interrupt
-	UCSR0B = (1 << RXEN0) | (1 << TXEN0) | (1 << RXCIE0);
+	UCSR0B = _BV(RXEN0) | _BV(TXEN0) | _BV(RXCIE0);
 	//asynchronous 8N1
-	UCSR0C = (1 << URSEL0) | (3 << UCSZ00);
+	//UCSR0C = _BV(URSEL0) | (3 << UCSZ00);
+	UCSR0C = _BV(URSEL0) | _BV(UCSZ00) | _BV(UCSZ01);
 	
 	memset(uart0_buffer, 0, UART0_BUFFER_SIZE);
 	head[UART0] = 0;
@@ -62,9 +63,9 @@ void initSerials(void) {
 	UBRR1H = (uint8_t)(UART_BAUD_CALC(UART1_BAUD_RATE,F_CPU)>>8);
 	UBRR1L = (uint8_t)UART_BAUD_CALC(UART1_BAUD_RATE,F_CPU);
 	// Enable receiver and transmitter; enable RX interrupt
-	UCSR1B = (1 << RXEN1) | (1 << TXEN1) | (1 << RXCIE1);
+	UCSR1B = _BV(RXEN1) | _BV(TXEN1) | _BV(RXCIE1);
 	//asynchronous 8N1
-	UCSR1C = (1 << URSEL1) | (3 << UCSZ10);
+	UCSR1C = _BV(URSEL1) | _BV(UCSZ10) | _BV(UCSZ11);
 
 	memset(uart1_buffer, 0, UART1_BUFFER_SIZE);
 	head[UART1] = 0;
@@ -149,12 +150,12 @@ void print(uart_port_t port, char c) {
 	switch (port) {
 	case UART0:
 		// wait until UDR ready
-		while(!(UCSR0A & (1 << UDRE0)));
+		while(!(UCSR0A & (unsigned char)_BV(UDRE0)));
 		UDR0 = c;    // send character
 		break;
 	case UART1:
 		// wait until UDR ready
-		while(!(UCSR1A & (1 << UDRE1)));
+		while(!(UCSR1A & (unsigned char)_BV(UDRE1)));
 		UDR1 = c;    // send character
 		break;
 	default:
