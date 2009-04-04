@@ -126,6 +126,7 @@ unsigned	gpsFix(void);
 double		gpsPdop(void);
 double		gpsHdop(void);
 double		gpsVdop(void);
+char		gpsHdopLevel(void);
 
 //--- GSV - GPS Satellites in View
 unsigned	gpsSatInView(void);

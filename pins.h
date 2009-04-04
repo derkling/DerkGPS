@@ -1,5 +1,5 @@
 /*
-  pins_arduino.h - Pin definition functions for ATmega162
+  pins_arduino.h - Pin definition functions for AT90
   Based on Arduino - http://www.arduino.cc/
 
   Copyright (c) 2008 Patrick Bellasi
@@ -21,11 +21,11 @@
 
 */
 
-#ifndef Pins_ATmega162_h
-#define Pins_ATmega162_h
+#ifndef Pins_AT90_h
+#define Pins_AT90_h
 
 #include <avr/pgmspace.h>
-#include "atmega162.h"
+#include "at90can.h"
 
 #define NOT_A_PIN 0
 #define NOT_A_PORT 0

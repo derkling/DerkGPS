@@ -6,14 +6,14 @@
 #include "gps.h"
 #include <math.h>
 
-#define GpsRead()	read(UART0)
-#define GpsAvailable()	available(UART0)
+# define GpsRead()	read(UART_GPS)
+# define GpsAvailable()	available(UART_GPS)
 
 #ifdef TEST_GPS
-# define GpsDebugChr(CHR)	print(UART1, CHR)
-# define GpsDebugStr(STR)	printStr(UART1, STR)
-# define GpsDebugToken(STR)	printStr(UART1, STR); printStr(UART1, " ")
-# define GpsDebugNewLine()	printLine(UART1, "")
+# define GpsDebugChr(CHR)	print(UART_AT, CHR)
+# define GpsDebugStr(STR)	printStr(UART_AT, STR)
+# define GpsDebugToken(STR)	printStr(UART_AT, STR); printStr(UART_AT, " ")
+# define GpsDebugNewLine()	printLine(UART_AT, "")
 # define GpsDebugDumpNMEA()			\
 	do {					\
 		byte = gpsReadSerial();		\
@@ -399,7 +399,7 @@ void gpsReset(void) {
 // This method should update just one sentence each time is called
 void gpsParse(void) {
 	gpsSentence_t type;
-	unsigned char chksum = 0;
+// 	unsigned char chksum = 0;
 		
 	// Ckecking if the pending sentence is of interest
 	type = gpsParseType();
@@ -423,6 +423,8 @@ void gpsParse(void) {
 	case GPS_VTG:
 		gpsParseVTG();
 		//makeUpdated(GPS_VTG);
+		break;
+	default:
 		break;
 	}
 	
@@ -484,6 +486,54 @@ double gpsHdop(void) {
 
 double gpsVdop(void) {
 	return vdop;
+}
+
+char gpsHdopLevel(void) {
+    unsigned hdop;
+    
+    hdop = gpsHdop()*10;
+    
+    if ( hdop>210) {
+	// POOR
+	// At this level, measurements are inaccurate by as much as half
+	// a football field and should be discarded.
+	return 'P';
+    }
+    if ( hdop>90) {
+	// FAIR
+	// Represents a low confidence level. Positional measurements
+	// should be discarded or used only to indicate a very rough
+	// estimate of the current location.
+	return 'F';
+    }
+    if ( hdop>70) {
+	// MODERATE
+	// Positional measurements could be used for calculations, but
+	// the fix quality could still be improved. A more open view of
+	// the sky is recommended.
+	return 'M';
+    }
+    if ( hdop>40) {
+	// GOOD
+	// Represents a level that marks the minimum appropriate for
+	// making business decisions. Positional measurements could be
+	// used to make reliable in-route navigation suggestions to the
+	// user.
+	return 'G';
+    }
+    if ( hdop>20) {
+	// EXCELLENT
+	// At this confidence level, positional measurements are
+	// considered accurate enough to meet all but the most
+	// sensitive applications.
+	return 'E';
+    }
+    
+    // IDEAL
+    // This is the highest possible confidence level to be used for
+    // applications demanding the highest possible precision at all times
+    return 'I';
+    
 }
 
 //--- GSV - GPS Satellites in View

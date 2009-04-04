@@ -66,7 +66,7 @@
 # Name of target controller 
 # (e.g. 'at90s8515', see the available avr-gcc mmcu 
 # options for possible values)
-MCU=atmega162
+MCU=at90can128
 
 # id to use with programmer
 # default: PROGRAMMER_MCU=$(MCU)
@@ -74,7 +74,7 @@ MCU=atmega162
 # accept the same MCU name as avr-gcc (for example
 # for ATmega8s, avr-gcc expects 'atmega8' and 
 # avrdude requires 'm8')
-PROGRAMMER_MCU=m162
+PROGRAMMER_MCU=c128
 
 # Name of our project
 # (use a single word, e.g. 'myproject')
@@ -85,7 +85,8 @@ PROJECTNAME=derkgps
 # (list all files to compile, e.g. 'a.c b.cpp as.S'):
 # Use .cc, .cpp or .C suffix for C++ files, use .S
 # (NOT .s !!!) for assembly source code files.
-PRJSRC=pins.c digitals.c interrupts.c time.c serials.c atinterface.c gps.c derkgps.c
+PRJSRC=pins.c digitals.c interrupts.c time.c serials.c atinterface.c gps.c odo.c can.c derkgps.c
+# PRJSRC=pins.c digitals.c interrupts.c time.c serials.c testport.c
 
 # additional includes (e.g. -I/path/to/mydir)
 INC=-I/usr/avr/include

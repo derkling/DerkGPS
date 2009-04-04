@@ -25,13 +25,17 @@
 
 #include <string.h>
 
-#include "atmega162.h"
+#include "at90can.h"
 #include "serials.h"
 #include "atinterface.h"
 #include "gps.h"
+#include "odo.h"
+#include "can.h"
 
 // Uncomment to enable GPS sentence testing...
-//#define TEST_GPS
+// #define TEST_GPS
+#define UART_AT		UART0
+#define UART_GPS	UART1
 
 #define OUTPUT_BUFFER_SIZE	47
 
@@ -64,20 +68,49 @@ typedef enum {
 } derkgps_event_class_t;
 
 
-// ATControl (UART1)
-#define Serial_print(C)			print(UART1, C)
-#define Serial_printStr(STR)		printStr(UART1, STR)
-#define Serial_printLine(STR)		printLine(UART1, STR)
-#define Serial_printFlush()		flush(UART1)
+// AT Control
+#define Serial_print(C)			print(UART_AT, C)
+#define Serial_printStr(STR)		printStr(UART_AT, STR)
+#define Serial_printLine(STR)		printLine(UART_AT, STR)
+#define Serial_printFlush()		flush(UART_AT)
+#define Serial_readLine(BUFF, LEN)	readLine(UART_AT, BUFF, LEN)
 #define SERIAL_NEWLINE	"\r\n"
-#define Serial_readLine(BUFF, LEN)	readLine(UART1, BUFF, LEN)
 
 // Utility functions
 void formatDouble(double val, char *buf, int len);
 
-// Top-Halves serials interrupt names
-#define INTR_GPS	UART0
-#define INTR_CMD	UART1
+//----- DIGITAL PINS
+// APE Interrupt pin (Active LOW) (PA0)
+#define intReq      	0
+
+// HIGH=>GPS_ON, LOW=>GPS_OFF	  (PA1)
+#define gpsPowerPin 	1
+// HIGH=>ANT_ON, LOW=>GPS_OFF	  (PC7)
+#define gpsAntPowerPin 	23
+
+// CAN1 Power Enable HIGH=>Active (PA2)
+#define can1Power	2
+// CAN2 Power Enable HIGH=>Active (PA3)
+#define can2Power	3
+// CAN Switch Select (LOW=>CAN1)  (PD7)
+#define canSwitchSelect	32
+// CAN Switch Enabler LOW=>Active (PE3)
+#define canSwitchEnable	27
+
+// MEMS Test mode (HIGH Active)   (PA4)
+#define memsTestPin	4
+// Move sensor interrupt INPUT    (PE7)
+#define moveSensorIntr  31
+
+// ODO Pulses Count               (PE6/T3)
+#define odoPulsePin	30
+
+// Running DERKGPS_DEBUG led	  (PA5)
+#define led1		5
+// Running DERKGPS_DEBUG led	  (PA6)
+#define led2		6
+// Running DERKGPS_DEBUG led	  (PA7)
+#define led3		7
 
 
 #endif

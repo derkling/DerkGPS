@@ -32,95 +32,125 @@
 volatile static voidFuncPtr intFunc[EXTERNAL_NUM_INTERRUPTS];
 
 void attachInterrupt(uint8_t interruptNum, void (*userFunc)(void), int mode) {
+
   if(interruptNum < EXTERNAL_NUM_INTERRUPTS) {
+
     intFunc[interruptNum] = userFunc;
-
-    switch (interruptNum) {
-    case 0:
-        EICRA = (EICRA & ~(_BV(ISC00)|_BV(ISC01))) | (mode << ISC00);
-        EIMSK |= (1 << INT0);
-        break;
-    case 1:
-        EICRA = (EICRA & ~(_BV(ISC00)|_BV(ISC11))) | (mode << ISC10);
-        EIMSK |= (1 << INT1);
-        break;
-    case 2:
-        EICRA = (EICRA & ~(_BV(ISC00)|_BV(ISC21))) | (mode << ISC20);
-        EIMSK |= (1 << INT2);
-        break;
-    case 3:
-        EICRA = (EICRA & ~(_BV(ISC00)|_BV(ISC31))) | (mode << ISC30);
-        EIMSK |= (1 << INT3);
-        break;
-
-// NOTE that recognition of falling or rising edge interrupts on INT7:4 requires
-// the presence of an I/O clock,
-
-    case 4:
-        EICRB = (EICRB & ~(_BV(ISC40)|_BV(ISC41))) | (mode << ISC40);
-        EIMSK |= (1 << INT4);
-        break;
-    case 5:
-        EICRB = (EICRB & ~(_BV(ISC50)|_BV(ISC51))) | (mode << ISC50);
-        EIMSK |= (1 << INT5);
-        break;
-    case 6:
-        EICRB = (EICRB & ~(_BV(ISC60)|_BV(ISC61))) | (mode << ISC60);
-        EIMSK |= (1 << INT6);
-        break;
-    case 7:
-        EICRB = (EICRB & ~(_BV(ISC70)|_BV(ISC71))) | (mode << ISC70);
-        EIMSK |= (1 << INT7);
-        break;
+    
+    switch(interruptNum) {
+	case 0:
+	    // Configure the interrupt mode (trigger on low input, any change, rising
+	    // edge, or falling edge).  The mode constants were chosen to correspond
+	    // to the configuration bits in the hardware register, so we simply shift
+	    // the mode into place.
+	    EICRA = (EICRA & ~((1 << ISC00) | (1 << ISC01))) | (mode << ISC00);
+	    // Enable the interrupt.
+	    EIMSK |= (1 << INT0);
+	    break;
+	case 1:
+	    EICRA = (EICRA & ~((1 << ISC10) | (1 << ISC11))) | (mode << ISC10);
+	    EIMSK |= (1 << INT1);
+	    break;
+	case 2:
+	    EICRA = (EICRA & ~((1 << ISC20) | (1 << ISC21))) | (mode << ISC20);
+	    EIMSK |= (1 << INT2);
+	    break;
+	case 3:
+	    EICRA = (EICRA & ~((1 << ISC30) | (1 << ISC31))) | (mode << ISC30);
+	    EIMSK |= (1 << INT3);
+	    break;
+	case 4:
+	    EICRB = (EICRB & ~((1 << ISC40) | (1 << ISC41))) | (mode << ISC40);
+	    EIMSK |= (1 << INT4);
+	    break;
+	case 5:
+	    EICRB = (EICRB & ~((1 << ISC50) | (1 << ISC51))) | (mode << ISC50);
+	    EIMSK |= (1 << INT5);
+	    break;
+	case 6:
+	    EICRB = (EICRB & ~((1 << ISC60) | (1 << ISC61))) | (mode << ISC60);
+	    EIMSK |= (1 << INT6);
+	    break;
+	case 7:
+	    EICRB = (EICRB & ~((1 << ISC70) | (1 << ISC71))) | (mode << ISC70);
+	    EIMSK |= (1 << INT7);
+	    break;
     }
-
-}
-
-void detachInterrupt(uint8_t interruptNum) {
-
-  if(interruptNum < EXTERNAL_NUM_INTERRUPTS) {
-    switch (interruptNum) {
-    case 0:
-        EIMSK &= ~_BV(INT0);
-        break;
-    case 1:
-        EIMSK &= ~_BV(INT1);
-        break;
-    case 2:
-        EIMSK &= ~_BV(INT2);
-        break;
-    case 3:
-        EIMSK &= ~_BV(INT3);
-        break;
-    case 4:
-        EIMSK &= ~_BV(INT4);
-        break;
-    case 5:
-        EIMSK &= ~_BV(INT5);
-        break;
-    case 6:
-        EIMSK &= ~_BV(INT6);
-        break;
-    case 7:
-        EIMSK &= ~_BV(INT7);
-        break;
-    }
-
-    intFunc[interruptNum] = 0;
   }
 }
 
-#define SIG_INTERRUPT_INSTALL(_num_)	\
-SIGNAL(SIG_INTERRUPT##_num_##) {	\
-  if(intFunc[EXTERNAL_INT_##_num_##])	\
-    intFunc[EXTERNAL_INT_##_num_##]();	\
+void detachInterrupt(uint8_t interruptNum) {
+  if(interruptNum < EXTERNAL_NUM_INTERRUPTS) {
+      
+      switch(interruptNum) {
+	  case 0:
+	      // Disable the interrupt.
+	      EIMSK &= ~(1 << INT0);
+	      break;
+	  case 1:
+	      EIMSK &= ~(1 << INT1);
+	      break;
+	  case 2:
+	      EIMSK &= ~(1 << INT2);
+	      break;
+	  case 3:
+	      EIMSK &= ~(1 << INT3);
+	      break;
+	  case 4:
+	      EIMSK &= ~(1 << INT4);
+	      break;
+	  case 5:
+	      EIMSK &= ~(1 << INT5);
+	      break;
+	  case 6:
+	      EIMSK &= ~(1 << INT6);
+	      break;
+	  case 7:
+	      EIMSK &= ~(1 << INT7);
+	      break;
+      }
+
+    intFunc[interruptNum] = 0;
+    
+  }
 }
 
-SIG_INTERRUPT_INSTALL(0);
-SIG_INTERRUPT_INSTALL(1);
-SIG_INTERRUPT_INSTALL(2);
-SIG_INTERRUPT_INSTALL(3);
-SIG_INTERRUPT_INSTALL(4);
-SIG_INTERRUPT_INSTALL(5);
-SIG_INTERRUPT_INSTALL(6);
-SIG_INTERRUPT_INSTALL(7);
+SIGNAL(SIG_INTERRUPT0) {
+  if(intFunc[EXTERNAL_INT_0])
+    intFunc[EXTERNAL_INT_0]();
+}
+
+SIGNAL(SIG_INTERRUPT1) {
+  if(intFunc[EXTERNAL_INT_1])
+    intFunc[EXTERNAL_INT_1]();
+}
+
+SIGNAL(SIG_INTERRUPT2) {
+    if(intFunc[EXTERNAL_INT_2])
+	intFunc[EXTERNAL_INT_2]();
+}
+
+SIGNAL(SIG_INTERRUPT3) {
+    if(intFunc[EXTERNAL_INT_3])
+	intFunc[EXTERNAL_INT_3]();
+}
+
+SIGNAL(SIG_INTERRUPT4) {
+    if(intFunc[EXTERNAL_INT_4])
+	intFunc[EXTERNAL_INT_4]();
+}
+
+SIGNAL(SIG_INTERRUPT5) {
+    if(intFunc[EXTERNAL_INT_5])
+	intFunc[EXTERNAL_INT_5]();
+}
+
+SIGNAL(SIG_INTERRUPT6) {
+    if(intFunc[EXTERNAL_INT_6])
+	intFunc[EXTERNAL_INT_6]();
+}
+
+SIGNAL(SIG_INTERRUPT7) {
+    if(intFunc[EXTERNAL_INT_7])
+	intFunc[EXTERNAL_INT_7]();
+}

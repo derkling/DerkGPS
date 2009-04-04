@@ -26,53 +26,73 @@
 #include "serials.h"
 
 // The UART buffers
-unsigned char uart0_buffer[UART0_BUFFER_SIZE];	// GPS
-unsigned char uart1_buffer[UART1_BUFFER_SIZE];	// ATControl
+unsigned char uart0_buffer[UART0_BUFFER_SIZE];
+unsigned char uart1_buffer[UART1_BUFFER_SIZE];
 
-unsigned char *buffer[] = {uart0_buffer, uart1_buffer};
-uint8_t size[UART_NUM] = {UART0_BUFFER_SIZE, UART1_BUFFER_SIZE};
-uint8_t limit[UART_NUM] = {UART0_BUFFER_THLIMIT, UART1_BUFFER_THLIMIT};
+static unsigned char *buffer[] = {uart0_buffer, uart1_buffer};
+static uint8_t size[UART_NUM] = {UART0_BUFFER_SIZE, UART1_BUFFER_SIZE};
+static uint8_t limit[UART_NUM] = {UART0_BUFFER_THLIMIT, UART1_BUFFER_THLIMIT};
 
-uint8_t head[UART_NUM];
-uint8_t tail[UART_NUM];
-uint8_t lines[UART_NUM];
-uint8_t bytes[UART_NUM];
-uint8_t intr[UART_NUM];
+static uint8_t head[UART_NUM];
+static uint8_t tail[UART_NUM];
+static uint8_t lines[UART_NUM];
+static uint8_t bytes[UART_NUM];
+uint8_t uart_intr[UART_NUM];
 
+// NOTE this function must be called with interrupts disabled
 void initSerials(void) {
-
+    
 //-------- UART0
-	// set baud rate
+	// Single speed operations
+	cbi(UCSR0A, U2X0);
+	// Set baud rate
 	UBRR0H = (uint8_t)(UART_BAUD_CALC(UART0_BAUD_RATE,F_CPU)>>8);
 	UBRR0L = (uint8_t)UART_BAUD_CALC(UART0_BAUD_RATE,F_CPU);
+	// Asynchronous 8N1
+	cbi(UCSR0C, UMSEL0);
+	cbi(UCSR0C, UPM01);
+	cbi(UCSR0C, UPM00);
+	cbi(UCSR0C, USBS0);
+	sbi(UCSR0C, UCSZ01);
+	sbi(UCSR0C, UCSZ00);
 	// Enable receiver and transmitter; enable RX interrupt
-	UCSR0B = _BV(RXEN0) | _BV(TXEN0) | _BV(RXCIE0);
-	//asynchronous 8N1
-	//UCSR0C = _BV(URSEL0) | (3 << UCSZ00);
-	UCSR0C = _BV(URSEL0) | _BV(UCSZ00) | _BV(UCSZ01);
-	
+	cbi(UCSR0B, UCSZ02);
+	sbi(UCSR0B, RXCIE0);
+	sbi(UCSR0B, RXEN0);
+	sbi(UCSR0B, TXEN0);
+
 	memset(uart0_buffer, 0, UART0_BUFFER_SIZE);
 	head[UART0] = 0;
 	tail[UART0] = 0;
 	lines[UART0] = 0;
 	bytes[UART0] = 0;
-	intr[UART0] = 0;
+	uart_intr[UART0] = 0;
 
 //-------- UART1
-	// set baud rate
+	// Single speed operations
+	cbi(UCSR1A, U2X1);
+	// Set baud rate
 	UBRR1H = (uint8_t)(UART_BAUD_CALC(UART1_BAUD_RATE,F_CPU)>>8);
 	UBRR1L = (uint8_t)UART_BAUD_CALC(UART1_BAUD_RATE,F_CPU);
+	// Asynchronous 8N1
+	cbi(UCSR1C, UMSEL1);
+	cbi(UCSR1C, UPM11);
+	cbi(UCSR1C, UPM10);
+	cbi(UCSR1C, USBS1);
+	sbi(UCSR1C, UCSZ11);
+	sbi(UCSR1C, UCSZ10);
 	// Enable receiver and transmitter; enable RX interrupt
-	UCSR1B = _BV(RXEN1) | _BV(TXEN1) | _BV(RXCIE1);
-	//asynchronous 8N1
-	UCSR1C = _BV(URSEL1) | _BV(UCSZ10) | _BV(UCSZ11);
+	cbi(UCSR1B, UCSZ12);
+	sbi(UCSR1B, RXCIE1);
+	sbi(UCSR1B, RXEN1);
+	sbi(UCSR1B, TXEN1);
 
 	memset(uart1_buffer, 0, UART1_BUFFER_SIZE);
 	head[UART1] = 0;
 	tail[UART1] = 0;
 	lines[UART1] = 0;
 	bytes[UART1] = 0;
-	intr[UART1] = 0;
+	uart_intr[UART1] = 0;
 }
 
 uint8_t available(uart_port_t port) {
@@ -147,20 +167,19 @@ void flush(uart_port_t port) {
 }
 
 void print(uart_port_t port, char c) {
-	switch (port) {
-	case UART0:
+    
+	if (port == UART0) {
 		// wait until UDR ready
 		while(!(UCSR0A & (unsigned char)_BV(UDRE0)));
-		UDR0 = c;    // send character
-		break;
-	case UART1:
+		// Send character
+		UDR0 = c;
+	} else {
 		// wait until UDR ready
 		while(!(UCSR1A & (unsigned char)_BV(UDRE1)));
-		UDR1 = c;    // send character
-		break;
-	default:
-		break;
+		// Send character
+		UDR1 = c;
 	}
+
 }
 
 void printStr(uart_port_t port, const char *str) {
@@ -187,11 +206,13 @@ inline void rxByte(uart_port_t port, unsigned char c ) {
 	// current location of the tail), we're about to overflow the buffer
 	// and so we don't write the character or advance the head.
 	if (i != tail[port]) {
+// sbi(PORTA, PA2);
 		buffer[port][head[port]] = c;
 		head[port] = i;
 		bytes[port]++;
-		// Look if we are at end-of-line toschedule the top-halve handler
+		// Look if we are at end-of-line to schedule the top-halve handler
 		if ( c == LINE_TERMINATOR ) {
+// sbi(PORTA, PA3);
 			lines[port]++;
 			// Scheduling top-halves only when we have a complete line
 			// in the buffer
@@ -206,10 +227,11 @@ inline void rxByte(uart_port_t port, unsigned char c ) {
 	}
 }
 
-SIGNAL (SIG_USART0_RECV) { // USART0 RX interrupt
+SIGNAL (SIG_UART0_RECV) { // UART0 RX interrupt
+// sbi(PORTA, PA1);
 	rxByte(UART0, UDR0);
 }
 
-SIGNAL (SIG_USART1_RECV) { // USART1 RX interrupt
+SIGNAL (SIG_UART1_RECV) { // UART1 RX interrupt
 	rxByte(UART1, UDR1);
 }

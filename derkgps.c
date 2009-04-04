@@ -39,50 +39,36 @@
 //	m/s * p/m = p/s     =>      d_speed * d_ppm = d_freq
 
 
-#define DERKGPS_INTR_LEN        1
-
-//----- DIGITAL PINS
-// #define USE_DIP_PACKAGE
-#ifdef USE_DIP_PACKAGE
-# warning Using DIP package pinout
-uint8_t led1		=   15;	// Running DERKGPS_DEBUG led	(using PA1)
-uint8_t led2		=   16;	// Running DERKGPS_DEBUG led	(using PA2)
-uint8_t led3		=   17;	// Running DERKGPS_DEBUG led	(using PA3)
-uint8_t gpsPowerPin 	=   14;	// HIGH=>GPS_ON, LOW=>GPS_OFF	(using PA0)
-uint8_t intReq      	=   18;	// Interrupt pin		(using PA4)
-#else
-uint8_t led1		=   6;	// Running DERKGPS_DEBUG led	(using PC0)
-uint8_t led2		=   7;	// Running DERKGPS_DEBUG led	(using PC1)
-uint8_t led3		=   8;	// Running DERKGPS_DEBUG led	(using PC2)
-uint8_t gpsPowerPin 	=   9;	// HIGH=>GPS_ON, LOW=>GPS_OFF	(using PC3)
-uint8_t intReq      	=   10;	// Interrupt pin		(using PC4)
-#endif
+#define DERKGPS_INTR_LEN        200
 
 //----- ODOMETER
 /// Odometer pulses count
-volatile unsigned long d_pcount = 0;
+unsigned long d_pcount = 0;
 /// Last computed odometer pulses frequency
-volatile unsigned long d_freq = 0;
+unsigned long d_freq = 0;
 /// The old freq value used for Alarms Checking
 unsigned d_oldFreq = 0;
+
 /// Current max [ppm/s] EVENT_OVER_SPEED alarm
 unsigned long d_minOverSpeed = 0;
 /// Current max [ppm/s] decelleration EVENT_EMERGENCY_BREAK alarm
 unsigned long d_minEmergencyBreak = 0;
+/// Pulses between distance interrupts
+unsigned d_distIntrPCount = 0;
+
+
 /// Frequency variation since last check [Hz]
 long d_df = 0;
 /// Time interval between last two update [s]
 unsigned long d_dt = 0;
 /// Last update time [ms]
 unsigned long d_odoLastUpdate = 0;
-/// Pulses between distance interrupts
-unsigned d_distIntrPCount = 0;
 /// Pulses of next distance interrupt
 unsigned long d_distIntrNext = 0;
 
 //----- AT Interface
 /// Delay ~[s] between dispaly monitor sentences, if 0 DISABLED (default 0);
-unsigned d_displayTime = 0;
+unsigned d_displayTime = 1;
 /// Buffer for sentence display formatting
 char d_displayBuff[OUTPUT_BUFFER_SIZE];
 /// ATinterface top-halves Interrupt scheduling flags
@@ -115,18 +101,10 @@ short d_thIntrGPS = 0;
 /// Last update time [ms]
 unsigned long d_displayLastUpdate = 0;
 
-//----- Loop function static variables
-unsigned long t0;
-unsigned long c0;
-unsigned long f0;
-
-//----- ODO Interrupt handler
-/// Odometer interrupt handler.
-/// This method is called by the ISR and simply take track of pulses
-/// coming in from the odometer input line.
-void countPulse(void) {
-	d_pcount++;
-}
+// //----- Loop function static variables
+unsigned long t0 = 0;
+unsigned long c0 = 0;
+unsigned long f0 = 0;
 
 //----- Utility functions
 void formatDouble(double val, char *buf, int len) {
@@ -140,64 +118,17 @@ void formatDouble(double val, char *buf, int len) {
 	snprintf(buf, len, "%+ld.%04ld", integer, fractal);
 }
 
-char formatHDOP(void) {
-	unsigned hdop;
-	
-	hdop = gpsHdop()*10;
-	
-	if ( hdop>210) {
-		// POOR
-		// At this level, measurements are inaccurate by as much as half
-		// a football field and should be discarded.
-		return 'P';
-	}
-	if ( hdop>90) {
-		// FAIR
-		// Represents a low confidence level. Positional measurements
-		// should be discarded or used only to indicate a very rough
-		// estimate of the current location.
-		return 'F';
-	}
-	if ( hdop>70) {
-		// MODERATE
-		// Positional measurements could be used for calculations, but
-		// the fix quality could still be improved. A more open view of
-		// the sky is recommended.
-		return 'M';
-	}
-	if ( hdop>40) {
-		// GOOD
-		// Represents a level that marks the minimum appropriate for
-		// making business decisions. Positional measurements could be
-		// used to make reliable in-route navigation suggestions to the
-		// user.
-		return 'G';
-	}
-	if ( hdop>20) {
-		// EXCELLENT
-		// At this confidence level, positional measurements are
-		// considered accurate enough to meet all but the most
-		// sensitive applications.
-		return 'E';
-	}
-	
-	// IDEAL
-	// This is the highest possible confidence level to be used for
-	// applications demanding the highest possible precision at all times
-	return 'I';
-
-}
-
 //----- Display monitor
 void display(void) {
-	unsigned long cc = d_pcount;
+// 	unsigned long cc = d_pcount;
+	unsigned long cc = odoPulseCount();
 	unsigned long cf = d_freq;
 	unsigned long time = millis();
 	uint8_t ge = d_pendingEvents[EVENT_CLASS_GPS];
 	uint8_t oe = d_pendingEvents[EVENT_CLASS_ODO];
 	unsigned siv = gpsSatInView();
 	unsigned fix = gpsFix();
-	char hdop = formatHDOP();
+	char hdop = gpsHdopLevel();
 	
 	time -= d_displayLastUpdate;
 	if ( time < (d_displayTime*1000) ) {
@@ -247,11 +178,10 @@ void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 	// looking if it has to be notified
 	if (intrEnabled && !alreadyNotified) {
 		pinMode(intReq, OUTPUT);
-#ifdef DERKGPS_INTR_LEN
-//* Wait until the interrupt has been read
+/* Wait until the interrupt has been read
 		delay(DERKGPS_INTR_LEN);
 		pinMode(intReq, INPUT);
-#endif
+*/
 		if ( d_intrTimeout>0 ) {
 			d_intrResetTime  = millis();
 			d_intrResetTime += d_intrTimeout;
@@ -264,7 +194,7 @@ void notifyEvent(derkgps_event_class_t event_class, uint8_t event) {
 
 // NOTE this method should avoid notification storms.
 // Once an event has been notified it should not be notified anymore while
-// is still old... only at the time of reverse event the notifier should be
+// it still olds... only at the time of reverse event the notifier should be
 // re-enabled.
 #define SET_EVENT(_evt_)			\
 	event = (0x1 << _evt_)
@@ -272,11 +202,6 @@ void checkAlarms(void) {
 	unsigned long newFreq;
 	unsigned newFix;
 	uint8_t event = 0;
-// 	unsigned long time;
-	
-// 	time = millis()-d_eventsLastUpdate;
-// 	if ( time < 500 )
-// 		return;
 	
 	// Checking ODO Moving Events...
 	newFreq = d_freq;
@@ -311,7 +236,6 @@ void checkAlarms(void) {
 		digitalWrite(led3, LOW);
 	}
 */
-	
 	// Checking for EVENT_EMERGENCY_BREAK event
 	// NOTE Acceleration is always OK
 	if ( d_minEmergencyBreak ) {
@@ -391,7 +315,7 @@ void checkAlarms(void) {
 	// Checking GPS fix
 	newFix = gpsFix();
 	if (newFix != d_oldFix) {
-		if (newFix>0) {
+		if ( newFix>0 ) {
 			SET_EVENT(GPS_EVENT_FIX_GET);
 		} else {
 			SET_EVENT(GPS_EVENT_FIX_LOSE);
@@ -400,6 +324,7 @@ void checkAlarms(void) {
 		d_oldFix = newFix;
 	}
 
+/*
 	// Checking ODO distance interrupt
 	if ( d_distIntrPCount>0 &&
 		d_pcount>d_distIntrNext ) {
@@ -412,6 +337,7 @@ void checkAlarms(void) {
 // 			d_distIntrNext);
 // 		Serial_printLine(d_displayBuff);
 	}
+*/
 
 	// Event led control
 	if (d_pendingEvents[EVENT_CLASS_ODO] ||
@@ -421,8 +347,6 @@ void checkAlarms(void) {
 		digitalWrite(led2, LOW);
 	}
 	
-// 	d_eventsLastUpdate = millis();
-
 	// Releasing interrupt line after a safe timeout period
 	if ( d_intrTimeout>0 &&
 		d_intrResetTime < millis() ) {
@@ -443,7 +367,7 @@ int odoUpdate(void) {
 	unsigned long dc = 0;
 	
 	t1 = millis();
-	c1 = d_pcount;
+	c1 = odoPulseCount();
 	
 	// 511[ms] = 0x1FF
 	if ( (t1-d_odoLastUpdate)>>9 ) {
@@ -455,7 +379,7 @@ int odoUpdate(void) {
 	
 	// NOTE millis() return the number of milliseconds since the current
 	// program started running, as an unsigned long.
-	// This number will overflow (go back to zero), after approximately 9 hours.
+	// This number will overflow (go back to zero), after approximately 49 days.
 	// If the counter has overflowed => simply we avoid the update
 	// next call will success
 	if (t1 < t0) {
@@ -482,6 +406,7 @@ int odoUpdate(void) {
 	c0 = c1;
 	
 	return 0;
+	
 }
 
 void gpsUpdate(void) {
@@ -489,6 +414,7 @@ void gpsUpdate(void) {
 	if (d_gpsPowerState == 0) {
 		// Powering off GPS
 		digitalWrite(gpsPowerPin, LOW);
+		digitalWrite(gpsAntPowerPin, LOW);
 		digitalWrite(led1, LOW);
 		gpsReset();
 		// Return with no other parsing
@@ -496,14 +422,15 @@ void gpsUpdate(void) {
 	}
 		
 	// Powering on GPS
+	digitalWrite(gpsAntPowerPin, HIGH);
 	digitalWrite(gpsPowerPin, HIGH);
 	
 	// Update GPS info; this call takes about 1s, this is the minimum
 	// 	delay for a speed update...
-	if ( checkInterrupt(INTR_GPS) ) {
+	if ( checkInterrupt(UART_GPS) ) {
 		digitalSwitch(led1);
 		gpsParse();
-		ackInterrupt(INTR_GPS);
+		ackInterrupt(UART_GPS);
 	}
 
 }
@@ -515,22 +442,15 @@ void setup(void) {
 	cli();
 	
 	// Disable JTAG interface
-	// This require TWICE writes in 4 CYCLES
-	MCUCSR |= (unsigned char)0x80;
-	MCUCSR |= (unsigned char)0x80;
-
-	// Inputs: MEMS (PA0, PA1 and PA2)
-	DDRA    = 0xF8;
-	// Disabling Pull-Ups
-	PORTA   = 0x00;
-	
-	// Outpust: LEDS(PC0-2), GPG PowerUp(PC3), Inputs(HiZ) INT_REQ(PC4)
-	DDRC	= 0x8F;
-	// Disabling Pull-Ups
-	PORTC	= 0x00;
+	// This require TWICE writes in 4 CPU cycles
+	sbi(MCUCR, JTD);
+	sbi(MCUCR, JTD);
 	
 	// Configure timers
 	initTime();
+	
+	// Configure odometer
+	initOdo();
 	
 	// Configure UART ports
 	initSerials();
@@ -538,55 +458,78 @@ void setup(void) {
 	// Configure GPS
 	initGps((unsigned long)GPS_VTG|GPS_GSV|GPS_GLL|GPS_GSA);
 	
-	// Enable interrupts
-	sei();
-
+	// Configure CAN Bus
+	initCan();
+	
+	// APE Interrupt
+	// NOTE to assert an interrupt the INTR line should be asserted LOW for a while
+	pinMode(intReq, INPUT);
+	digitalWrite(intReq, LOW); // NOTE this will disable the internal Pull-up
+	
 	// GPS module power control
+	pinMode(gpsAntPowerPin, OUTPUT);
+	digitalWrite(gpsAntPowerPin, LOW);
 	pinMode(gpsPowerPin, OUTPUT);
 	digitalWrite(gpsPowerPin, LOW);
 	
-	//Note: to assert an interrupt the INTR line should be asserted LOW for a while
-	pinMode(intReq, INPUT);
-	digitalWrite(intReq, LOW);
+	// CAN modules power control
+	pinMode(can1Power, OUTPUT);
+	digitalWrite(can1Power, LOW);
+	pinMode(can2Power, OUTPUT);
+	digitalWrite(can1Power, LOW);
+	pinMode(canSwitchSelect, OUTPUT);
+	digitalWrite(canSwitchSelect, LOW);
+	pinMode(canSwitchEnable, OUTPUT);
+	digitalWrite(canSwitchEnable, HIGH);
 	
-	// NMEA Parsing Activity LED
+	// Movement sensors
+	pinMode(memsTestPin, OUTPUT);
+	digitalWrite(memsTestPin, LOW);
+	pinMode(moveSensorIntr, INPUT);
+	digitalWrite(moveSensorIntr, LOW); // NOTE this will disable the internal Pull-up
+	
+	// Odometer input
+	pinMode(odoPulsePin, INPUT);
+	digitalWrite(odoPulsePin, HIGH); // enable internal Pull-up
+	
+	// LEDs confiugration
+	//	NMEA Parsing Activity LED
 	pinMode(led1, OUTPUT);
 	digitalWrite(led1, LOW);
-	
-	// Events Pending Monitor LED
+	//	Events Pending Monitor LED
 	pinMode(led2, OUTPUT);
 	digitalWrite(led2, LOW);
-	
-	// TO BE DEFINED
+	//	Movement LED
 	pinMode(led3, OUTPUT);
 	digitalWrite(led3, LOW);
 	
-	// Odometer INTR routine initialization
-	attachInterrupt(INTR0, countPulse, RISING);
-	
 	// Loop function static variables INITIALIZATION
 	t0 = millis();
-	c0 = d_pcount;
-	f0 = 0;
+	c0 = odoPulseCount();
 	
-	// Powering on GPS and Optical Interrupt line
-	digitalWrite(gpsPowerPin, HIGH);
+	// Powering on GPS
 	d_gpsPowerState = 1;
+	digitalWrite(gpsAntPowerPin, HIGH);
+	digitalWrite(gpsPowerPin, HIGH);
 	
 	// Initial data update
 	odoUpdate();
 	
+	// Enable interrupts
+	sei();
+	
 }
 
 inline void loop(void) {
-	
+	 
 	// Updating GPS data
 	gpsUpdate();
 	
 #ifndef TEST_GPS
 	// Updating ODO data
-	if (odoUpdate()!=0)
+	if ( odoUpdate() != 0 ) {
 		return;
+	}
 	
 	// Check constraints and issue alarms
 	checkAlarms();
@@ -597,26 +540,25 @@ inline void loop(void) {
 	}
 #endif
 	// Execute user commands
-	if ( checkInterrupt(INTR_CMD) ) {
+	if ( checkInterrupt(UART_AT) ) {
 		parseCommand();
-		ackInterrupt(INTR_CMD);
+		ackInterrupt(UART_AT);
 	}
-
+	
 }
 
 int main(void) {
 
 	setup();
 	
-// 	Serial_printLine("             DerkGPS v1.0 (30-07-2008)                ");
-// 	Serial_printLine("Copyright 2008 by Patrick Bellasi <derkling@gmail.com>");
 	if (d_displayTime) {
-		Serial_printLine("DerkGPS v1.0.0 by Patrick Bellasi");
+	    Serial_printLine("DerkGPS v2.0 by Patrick Bellasi <derkling@gmail.com>");
 	}
-// 	Serial_printLine("AT Command ready");
-	
+
 	while(1) {
-		loop();
+// 		loop();
+	    canSniff();
+
 	}
 	
 }

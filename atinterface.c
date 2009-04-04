@@ -22,10 +22,7 @@
 
 #include "atinterface.h"
 #include "serials.h"
-// #include "gps.h"
 
-/// Interrupt pin
-extern uint8_t intReq;
 /// Golbal variables defined within derkgps.c
 extern volatile unsigned long d_pcount;
 /// Last computed odometer pulses frequency
@@ -48,56 +45,58 @@ extern unsigned d_distIntrPCount;
 extern unsigned long d_distIntrNext;
 
 /// The buffer for output and result return
-extern char d_displayBuff[OUTPUT_BUFFER_SIZE];
+// extern char d_displayBuff[OUTPUT_BUFFER_SIZE];
+/// Buffer for sentence display formatting
+char d_outBuff[OUTPUT_BUFFER_SIZE];
 
 /// Readed and parsed value
 unsigned long  newValueUL;
 unsigned newValueU;
 
-#define cmdLook()	look(UART1)
-#define cmdRead()	read(UART1)
-#define cmdAvailable()	available(UART1)
+#define cmdLook()	look(UART_AT)
+#define cmdRead()	read(UART_AT)
+#define cmdAvailable()	available(UART_AT)
 
-#define Serial_printValue(STR)	printStr(UART1, STR); printStr(UART1, " ")
+#define Serial_printValue(STR)	printStr(UART_AT, STR); printStr(UART_AT, " ")
 
 
 #define ShowValue(VALUE)				\
-	snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,	\
+	snprintf(d_outBuff, OUTPUT_BUFFER_SIZE,	\
 		 "%d", VALUE);				\
-	Serial_printStr(d_displayBuff);			\
+	Serial_printStr(d_outBuff);			\
 	Serial_printStr(" ")
 	
 #define ShowValueU(VALUE)				\
-	snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,	\
+	snprintf(d_outBuff, OUTPUT_BUFFER_SIZE,	\
 		 "%u", VALUE);				\
-	Serial_printStr(d_displayBuff);			\
+	Serial_printStr(d_outBuff);			\
 	Serial_printStr(" ")
 
 #define ShowValueUL(VALUE)				\
-	snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE,	\
+	snprintf(d_outBuff, OUTPUT_BUFFER_SIZE,	\
 		 "%lu", VALUE);				\
-	Serial_printStr(d_displayBuff);			\
+	Serial_printStr(d_outBuff);			\
 	Serial_printStr(" ")
 
 #define ShowValueD(VALUE)					\
-	formatDouble(VALUE, d_displayBuff, OUTPUT_BUFFER_SIZE);	\
-	Serial_printStr(d_displayBuff);			\
+	formatDouble(VALUE, d_outBuff, OUTPUT_BUFFER_SIZE);	\
+	Serial_printStr(d_outBuff);			\
 	Serial_printStr(" ")
 
-/// Copy a command value from UART buffer to local (d_displayBuff) buffer
+/// Copy a command value from UART buffer to local (d_outBuff) buffer
 void cmdReadValue() {
 	short iValRead = 0;
 	do {
-		d_displayBuff[iValRead] = cmdLook();
-		if (d_displayBuff[iValRead]!=-1 &&		// uart empty
-		    d_displayBuff[iValRead]!=LINE_TERMINATOR &&	// line end
-		    d_displayBuff[iValRead]!='+') {		// cmd following
+		d_outBuff[iValRead] = cmdLook();
+		if (d_outBuff[iValRead]!=-1 &&		// uart empty
+		    d_outBuff[iValRead]!=LINE_TERMINATOR &&	// line end
+		    d_outBuff[iValRead]!='+') {		// cmd following
 			// Removing char from uart buffer
 			cmdRead();
 			iValRead++;
 		} else {
 			// Null terminating string and returning
-			d_displayBuff[iValRead]=0;
+			d_outBuff[iValRead]=0;
 			return;
 		}
 	} while(1);
@@ -105,12 +104,12 @@ void cmdReadValue() {
 
 #define ReadValueU(VALUE)				\
 	cmdReadValue();					\
-	sscanf(d_displayBuff, "%u", &newValueU);	\
+	sscanf(d_outBuff, "%u", &newValueU);	\
 	VALUE = newValueU;
 
 #define ReadValueUL(VALUE)				\
 	cmdReadValue();					\
-	sscanf(d_displayBuff, "%lu", &newValueUL);	\
+	sscanf(d_outBuff, "%lu", &newValueUL);	\
 	VALUE = newValueUL;
 
 inline int parseAlarmCmd(int type) {
@@ -378,12 +377,12 @@ inline int parseQueryCmd(int type) {
 				events = d_pendingEvents[EVENT_CLASS_GPS];
 				events <<= 8;
 				events |= d_pendingEvents[EVENT_CLASS_ODO];
-				snprintf(d_displayBuff, OUTPUT_BUFFER_SIZE, "%lu 0x%02X%02X",
+				snprintf(d_outBuff, OUTPUT_BUFFER_SIZE, "%lu 0x%02X%02X",
 						events,
 						d_pendingEvents[EVENT_CLASS_GPS],
 						d_pendingEvents[EVENT_CLASS_ODO]);
-// 				Serial_printLine(d_displayBuff);
-				Serial_printValue(d_displayBuff);
+// 				Serial_printLine(d_outBuff);
+				Serial_printValue(d_outBuff);
 				
 				// Resetting pending event
 				d_pendingEvents[EVENT_CLASS_GPS] = EVENT_NONE;

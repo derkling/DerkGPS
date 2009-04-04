@@ -20,10 +20,10 @@
 #ifndef HardwareSerial_h
 #define HardwareSerial_h
 
-#include "atmega162.h"
+#include "at90can.h"
 
-#define UART0_BAUD_RATE 9600
-#define UART1_BAUD_RATE 9600
+#define UART0_BAUD_RATE 115200
+#define UART1_BAUD_RATE 115200
 
 // Compute the UART baud rate
 #define UART_BAUD_CALC(UART_BAUD_RATE,F_CPU) ((F_CPU)/((UART_BAUD_RATE)*16l)-1)
@@ -33,7 +33,8 @@
 // location to which to write the next incoming character and rx_buffer_tail
 // is the index of the location from which to read.
 // NOTE max=256
-#define UART0_BUFFER_SIZE 76
+#if 0
+#define UART0_BUFFER_SIZE	76
 // Schedule top-halves interrupt when >=64 bytes
 #define UART0_BUFFER_THLIMIT	72
 // #define UART1_BUFFER_SIZE 48
@@ -41,6 +42,13 @@
 // #define UART1_BUFFER_THLIMIT	44
 #define UART1_BUFFER_SIZE	32
 #define UART1_BUFFER_THLIMIT	24
+#endif
+#define UART0_BUFFER_SIZE	76
+#define UART0_BUFFER_THLIMIT	72
+#define UART1_BUFFER_SIZE	76
+#define UART1_BUFFER_THLIMIT	72
+
+
 
 // Define the line terminator (CR(\r) = 13 = 0x0D)
 #define LINE_TERMINATOR 0x0D
@@ -53,10 +61,10 @@ typedef enum {
 
 
 // Top-Halves serials interrupt scheduling flags
-extern uint8_t intr[UART_NUM];
-#define scheduleTopHalve(PORT)	intr[PORT]=1
-#define ackInterrupt(PORT)	intr[PORT]=0
-#define checkInterrupt(PORT) 	intr[PORT]==1
+extern uint8_t uart_intr[UART_NUM];
+#define scheduleTopHalve(PORT)	uart_intr[PORT]=1
+#define ackInterrupt(PORT)	uart_intr[PORT]=0
+#define checkInterrupt(PORT) 	uart_intr[PORT]==1
 
 void	initSerials(void);
 
