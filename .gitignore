@@ -25,6 +25,9 @@
 *.elf
 *.bin
 *.gz
+*.hex
+*.out
+*.map
 
 #
 # Top-level generic files
