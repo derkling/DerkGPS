@@ -34,6 +34,9 @@
 
 // Uncomment to enable GPS sentence testing...
 // #define TEST_GPS
+// Uncomment to enable CAN sniffing testing...
+// #define TEST_CAN
+
 #define UART_AT		UART0
 #define UART_GPS	UART1
 
@@ -94,6 +97,8 @@ void formatDouble(double val, char *buf, int len);
 #define can2Power	3
 // CAN Switch Select (LOW=>CAN1)  (PD7)
 #define canSwitchSelect	32
+#define CAN_PORTA	LOW
+#define CAN_PORTB	HIGH
 // CAN Switch Enabler LOW=>Active (PE3)
 #define canSwitchEnable	27
 

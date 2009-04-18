@@ -474,13 +474,13 @@ void setup(void) {
 	
 	// CAN modules power control
 	pinMode(can1Power, OUTPUT);
-	digitalWrite(can1Power, LOW);
+	digitalWrite(can1Power, HIGH); // Forcing Stand-By Mode
 	pinMode(can2Power, OUTPUT);
-	digitalWrite(can1Power, LOW);
+	digitalWrite(can1Power, HIGH); // Forcing Stand-By Mode
 	pinMode(canSwitchSelect, OUTPUT);
-	digitalWrite(canSwitchSelect, LOW);
+	digitalWrite(canSwitchSelect, LOW); // Pre-Selecting channel A
 	pinMode(canSwitchEnable, OUTPUT);
-	digitalWrite(canSwitchEnable, HIGH);
+	digitalWrite(canSwitchEnable, HIGH); // Powering-off switch
 	
 	// Movement sensors
 	pinMode(memsTestPin, OUTPUT);
@@ -556,9 +556,16 @@ int main(void) {
 	}
 
 	while(1) {
-// 		loop();
-	    canSniff();
-
+#ifdef TEST_CAN
+#warning CAN Sniffing TEST enabled
+		digitalWrite(canSwitchEnable, LOW);
+		digitalWrite(canSwitchSelect, CAN_PORTA);
+		digitalWrite(can1Power, LOW);
+		digitalWrite(can2Power, HIGH);
+		canSniff();
+#else
+		loop();
+#endif
 	}
 	
 }
