@@ -22,11 +22,11 @@
 
 #include "at90can.h"
 
-#define UART0_BAUD_RATE 115200
-#define UART1_BAUD_RATE 115200
+#define UART0_BAUD_RATE 9600
+#define UART1_BAUD_RATE 9600
 
 // Compute the UART baud rate
-#define UART_BAUD_CALC(UART_BAUD_RATE,F_CPU) ((F_CPU)/((UART_BAUD_RATE)*16l)-1)
+#define UART_BAUD_CALC(UART_BAUD_RATE,F_CPU) (((F_CPU)/((UART_BAUD_RATE)*16l))-1)
 
 // Used to define variables for buffering incoming serial data.  We're
 // using a ring buffer (I think), in which rx_buffer_head is the index of the
