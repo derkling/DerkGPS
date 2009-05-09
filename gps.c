@@ -28,6 +28,17 @@
 # define GpsDebugDumpNMEA()
 #endif
 
+//-----[ GPS Specific Protocol Commands ]---------------------------------------
+
+struct gps_cmd {
+	char *cmd;
+	uint8_t size;
+};
+
+#define GPS_CMD(_name)					\
+	{_name, sizeof(_name)/sizeof(uint8_t)}
+
+
 //-----[ Locals ]---------------------------------------------------------------
 
 /// The mask of enabled sentences
@@ -75,6 +86,20 @@ short varEst = 1;
 //--- Parsing vars
 char byte;
 char buff[16];
+
+//--- GPS Binary Command Support
+char gps_cmd_cold_start[] = {0xb5,0x62,0x06,0x04,0x04,0x00,0xff,0x07,0x02,0x00,0x16,0x79};
+char gps_cmd_hot_start[] = {0xb5,0x62,0x06,0x04,0x04,0x00,0x00,0x00,0x02,0x00,0x10,0x68};
+char gps_cmd_warm_start[] = {0xb5,0x62,0x06,0x04,0x04,0x00,0x01,0x00,0x02,0x00,0x11,0x6c};
+
+struct gps_cmd cmds[] = {
+	GPS_CMD(gps_cmd_cold_start),
+	GPS_CMD(gps_cmd_hot_start),
+	GPS_CMD(gps_cmd_warm_start),
+};
+
+#define GPS_CMD_COUNT sizeof(cmds)/sizeof(struct gps_cmd)
+
 
 
 //----- Initialization
@@ -132,6 +157,21 @@ double minToDec(double nmea) {
 	dec = (double)deg + (min/60.0);
 	
 	return dec;
+}
+
+//----- GPS Binary Command support
+int gpsSendCmd(uint8_t index) {
+	uint8_t i;
+
+	if ( index >= GPS_CMD_COUNT ) {
+		return -1;
+	}
+
+	for (i=0; i<cmds[index].size; i++) {
+		print(UART_GPS, cmds[index].cmd[i]);
+	}
+
+	return 0;
 }
 
 //----- Parsing sentence type

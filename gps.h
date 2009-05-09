@@ -108,6 +108,9 @@ void gpsConfig(unsigned long mask);
 /// This method must be called after a power-down
 void gpsReset(void);
 
+/// Send the specified command to the GPS
+int gpsSendCmd(uint8_t index);
+
 /// Update enabled sentences values.
 void gpsParse(void);
 

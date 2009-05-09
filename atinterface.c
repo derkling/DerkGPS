@@ -35,6 +35,8 @@ extern unsigned long d_minEmergencyBreak;
 extern unsigned d_displayTime;
 /// The GPS power state: 1=ON, 0=OFF
 extern unsigned d_gpsPowerState;
+/// The next command to send to the GPS
+extern unsigned d_gpsNextCmd;
 /// Events pending to be ACKed
 extern derkgps_event_t d_pendingEvents[EVENT_CLASS_TOT];
 /// How long an interrupt last [ms]
@@ -275,6 +277,21 @@ inline int parseGpsCmd(int type) {
 			goto pgc_error;
 		}
 		goto pgc_error;
+	case 'S':
+		switch(cmdRead()) {
+		case 'C':
+			switch(cmdLook()) {
+			case LINE_TERMINATOR:
+				cmdRead();
+			case '=': // WRITE "GPS Command"
+				cmdRead();
+				ReadValueUL(d_gpsNextCmd);
+				goto pgc_ok;
+			}
+			goto pgc_error;
+		}
+		goto pgc_error;
+
 	case 'T':
 		switch(cmdRead()) {
 		case 'D':

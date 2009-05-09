@@ -92,6 +92,8 @@ unsigned d_intrTimeout = 30000;
 //----- GPS DATA
 /// The GPS power state: 1=ON, 0=OFF
 unsigned d_gpsPowerState = 0;
+/// The next command to send to the GPS (0=don't send any command)
+unsigned d_gpsNextCmd = 0;
 /// The old fix value used for Alarms Checking
 unsigned d_oldFix = FIX_INVALID;
 /// GPS top-halves Interrupt scheduling flags
@@ -431,6 +433,11 @@ void gpsUpdate(void) {
 		digitalSwitch(led1);
 		gpsParse();
 		ackInterrupt(UART_GPS);
+	}
+
+	if ( d_gpsNextCmd ) {
+		gpsSendCmd(d_gpsNextCmd-1);
+		d_gpsNextCmd = 0;
 	}
 
 }
