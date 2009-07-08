@@ -64,11 +64,11 @@ double dir = 0;
 /// Current fix type
 unsigned fix = FIX_NONE;
 /// PDOP
-double pdop = 100;
+double pdop = 25;
 /// HDOP
-double hdop = 100;
+double hdop = 25;
 /// VDOP
-double vdop = 100;
+double vdop = 25;
 
 //---  GSV - Satellites in view
 /// Total number of satellites in view
@@ -426,9 +426,9 @@ void gpsReset(void) {
 	kmh = 0;
 	dir = 0;
 	fix = FIX_NONE;
-	pdop = 100;
-	hdop = 100;
-	vdop = 100;
+	pdop = 25;
+	hdop = 25;
+	vdop = 25;
 	siv = 0;
 	date = 0;
 	knots = 0;
